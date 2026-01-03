@@ -141,7 +141,7 @@ app.get('/deploy-status/:hash', async (req, res) => {
  * Start Server
  * -------------------------
  */
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`✅ Backend running at http://localhost:${PORT}`);
   console.log('🔧 Endpoints:');
