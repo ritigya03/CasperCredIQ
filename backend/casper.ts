@@ -1,4 +1,4 @@
-// lib/casper.ts - Updated for casper-js-sdk v5+
+// lib/casper.ts - Fixed for casper-js-sdk v2.15.7
 'use client';
 
 import { CasperClient, CLPublicKey, CLValueParsers, CasperServiceByJsonRPC, RuntimeArgs } from 'casper-js-sdk';
@@ -65,11 +65,12 @@ class CasperService {
 
   /**
    * Query contract entrypoint (read-only)
+   * Note: For role queries, use getUserRole() instead
    */
   async queryContract(params: {
     contractHash?: string;
     entrypoint: string;
-    args: RuntimeArgs;
+    args?: RuntimeArgs;
   }): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const contractHash = params.contractHash 
@@ -84,10 +85,7 @@ class CasperService {
 
       const stateRootHash = await this.nodeClient.getStateRootHash();
       
-      // Note: For Odra contracts, we need to query the contract's named keys
-      // to find the stored data. The contract stores data in dictionaries.
-      
-      // First, get the contract's state
+      // Get the contract's state
       const contractData = await this.nodeClient.getBlockState(
         stateRootHash,
         `hash-${contractHash}`,
@@ -96,62 +94,8 @@ class CasperService {
 
       console.log('Contract data:', contractData);
 
-      // For get_role, we need to query the credentials mapping
-      if (params.entrypoint === 'get_role') {
-        // Extract user address from args
-        const argsMap = params.args.toMap();
-        const userArg = argsMap.get('user');
-        
-        if (!userArg) {
-          throw new Error('User argument not provided');
-        }
-
-        // Convert the user CLByteArray to a key string
-        const userBytes = userArg.bytes();
-        const userKey = Buffer.from(userBytes).toString('hex');
-
-        console.log('Querying role for user:', userKey);
-
-        // Query the credentials dictionary
-        try {
-          const result = await this.nodeClient.getDictionaryItemByName(
-            stateRootHash,
-            contractHash,
-            'credentials',
-            userKey
-          );
-
-          console.log('Dictionary query result:', result);
-
-          if (result && result.stored_value && result.stored_value.CLValue) {
-            // Parse the credential struct
-            const parsed = CLValueParsers.fromJSON(result.stored_value.CLValue);
-            const credentialData = parsed.value();
-            
-            console.log('Parsed credential:', credentialData);
-
-            // Extract role from credential
-            if (credentialData && typeof credentialData === 'object') {
-              // Handle different possible structures
-              if ('role' in credentialData) {
-                return { success: true, data: credentialData.role };
-              } else if (Array.isArray(credentialData) && credentialData[0]) {
-                // Sometimes returned as array [role, issued_at, expires_at, revoked]
-                return { success: true, data: credentialData[0] };
-              }
-            }
-
-            return { success: true, data: credentialData };
-          }
-
-          return { success: false, error: 'No credential found' };
-        } catch (dictErr: any) {
-          console.error('Dictionary query error:', dictErr);
-          return { success: false, error: dictErr.message };
-        }
-      }
-
-      // For other entrypoints, return the contract data
+      // For specific queries, use dedicated methods like getUserRole()
+      // This method returns raw contract data
       return { success: true, data: contractData };
 
     } catch (err: any) {
@@ -191,17 +135,18 @@ class CasperService {
 
       console.log('Role query result:', result);
 
-      if (result && result.stored_value && result.stored_value.CLValue) {
+      // In SDK v2.15.7, result structure is different
+      if (result && result.CLValue) {
         try {
-          const parsed = CLValueParsers.fromJSON(result.stored_value.CLValue);
-          const credentialData = parsed.value();
+          const parsed = CLValueParsers.fromJSON(result.CLValue);
+          const credentialData = parsed.val as any;
           
           // Extract role from credential struct
           if (credentialData && typeof credentialData === 'object') {
             if ('role' in credentialData) {
-              return credentialData.role;
+              return credentialData.role as string;
             } else if (Array.isArray(credentialData) && credentialData[0]) {
-              return credentialData[0];
+              return credentialData[0] as string;
             }
           }
           
@@ -209,10 +154,12 @@ class CasperService {
         } catch (parseErr) {
           console.error('Error parsing CLValue:', parseErr);
           
-          if (result.stored_value.CLValue.parsed) {
-            const parsed = result.stored_value.CLValue.parsed;
+          // Try alternate parsing method
+          const clValueAny = result.CLValue as any;
+          if (clValueAny.parsed) {
+            const parsed = clValueAny.parsed;
             if (typeof parsed === 'object' && 'role' in parsed) {
-              return parsed.role;
+              return parsed.role as string;
             }
             return parsed.toString();
           }
@@ -253,10 +200,10 @@ class CasperService {
 
       console.log('Validity query result:', result);
 
-      if (result && result.stored_value && result.stored_value.CLValue) {
+      if (result && result.CLValue) {
         try {
-          const parsed = CLValueParsers.fromJSON(result.stored_value.CLValue);
-          const credentialData = parsed.value();
+          const parsed = CLValueParsers.fromJSON(result.CLValue);
+          const credentialData = parsed.val as any;
           
           // Extract expires_at and revoked from credential
           let expiresAt: number = 0;
@@ -321,21 +268,21 @@ class CasperService {
         accountHash
       );
 
-      if (result && result.stored_value && result.stored_value.CLValue) {
+      if (result && result.CLValue) {
         try {
-          const parsed = CLValueParsers.fromJSON(result.stored_value.CLValue);
-          const credentialData = parsed.value();
+          const parsed = CLValueParsers.fromJSON(result.CLValue);
+          const credentialData = parsed.val as any;
           
           let role: string | null = null;
           let expiresAt: number = 0;
           let revoked: boolean = false;
           
           if (credentialData && typeof credentialData === 'object') {
-            if ('role' in credentialData) role = credentialData.role;
+            if ('role' in credentialData) role = credentialData.role as string;
             if ('expires_at' in credentialData) expiresAt = Number(credentialData.expires_at);
             if ('revoked' in credentialData) revoked = Boolean(credentialData.revoked);
           } else if (Array.isArray(credentialData)) {
-            role = credentialData[0];
+            role = credentialData[0] as string;
             expiresAt = Number(credentialData[2]);
             revoked = Boolean(credentialData[3]);
           }
@@ -409,8 +356,12 @@ class CasperService {
    */
   async getBalance(publicKeyHex: string): Promise<bigint> {
     try {
+      const stateRootHash = await this.nodeClient.getStateRootHash();
       const pk = CLPublicKey.fromHex(publicKeyHex);
-      const balance = await this.nodeClient.getAccountBalance(pk);
+      const balanceUref = pk.toAccountHashStr();
+      const balanceResult = await this.nodeClient.getAccountBalance(stateRootHash, balanceUref);
+      // Convert BigNumber to bigint
+      const balance = BigInt(balanceResult.toString());
       console.log('Balance query:', { publicKeyHex, balance: balance.toString() });
       return balance;
     } catch (error: any) {
@@ -472,7 +423,7 @@ class CasperService {
    */
   async testConnection(): Promise<{ success: boolean; version?: string; error?: string }> {
     try {
-      const status = await this.nodeClient.getNodeStatus();
+      const status = await this.nodeClient.getStatus();
       console.log('Node connection successful:', status);
       return { success: true, version: status.api_version };
     } catch (error: any) {
@@ -489,9 +440,9 @@ class CasperService {
    */
   async getDeployStatus(deployHash: string): Promise<any> {
     try {
-      const deploy = await this.nodeClient.getDeploy(deployHash);
-      console.log('Deploy status:', { deployHash, deploy });
-      return deploy;
+      const deployInfo = await this.nodeClient.getDeployInfo(deployHash);
+      console.log('Deploy status:', { deployHash, deployInfo });
+      return deployInfo;
     } catch (error: any) {
       console.error('Error getting deploy status:', error);
       throw error;

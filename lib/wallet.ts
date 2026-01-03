@@ -181,15 +181,16 @@ class WalletManager {
       }
 
       // 2. Primary format: { signature: "..." } (most common now)
-      if (response && typeof response === 'object' && response.signature) {
-        const signatureHex = response.signature as string;
-        const publicKey = CLPublicKey.fromHex(this.state.publicKey);
+if (response && typeof response === 'object' && response.signature) {
+  const signatureHex = response.signature as string;
+  const publicKey = CLPublicKey.fromHex(this.state.publicKey);
 
-        const signedDeploy = DeployUtil.setSignature(deploy, signatureHex, publicKey);
+  const signatureBytes = Uint8Array.from(Buffer.from(signatureHex, 'hex'));
+  const signedDeploy = DeployUtil.setSignature(deploy, signatureBytes, publicKey);
 
-        console.log('Deploy signed using signature field:', getDeployHashAsHex(signedDeploy));
-        return signedDeploy;
-      }
+  console.log('Deploy signed using signature field:', getDeployHashAsHex(signedDeploy));
+  return signedDeploy;
+}
 
       // 3. Fallback: stringified JSON response
       let parsed = response;
