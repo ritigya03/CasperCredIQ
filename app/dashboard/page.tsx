@@ -5,6 +5,7 @@ import WalletConnect from "@/components/WalletConnect"
 import IssueCredential from "@/components/IssueCredential"
 import VerifyStatus from "@/components/VerifyStatus"
 import RoleResources from "@/components/RoleResources"
+import AIVerificationForm from "@/components/AIVerificationForm"
 import Link from "next/link"
 
 export default function Home() {
@@ -83,6 +84,7 @@ export default function Home() {
 
           {/* Right Column */}
           <div className="space-y-6">
+            <AIVerificationForm />
             <RoleResources />
 
             {/* Info Card */}
