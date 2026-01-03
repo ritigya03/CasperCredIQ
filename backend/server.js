@@ -1,4 +1,4 @@
-// server.js — FINAL FIXED VERSION (Node 22 + ESM)
+// server.js — FINAL FIXED VERSION (Node 22 + ESM) with CORS fix
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
@@ -14,20 +14,23 @@ const app = express();
 
 /**
  * -------------------------
- * CORS Configuration
+ * CORS Configuration - FIXED
  * -------------------------
  */
 app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:3001',
-    'https://your-frontend-domain.vercel.app',  // Replace with your actual Vercel URL
-    'https://your-frontend-domain.railway.app'   // Replace with your actual Railway URL
+    'https://fearless-laughter-production.up.railway.app',  // Your frontend
+    'https://caspercrediq-production.up.railway.app'         // Your backend (for self-requests)
   ],
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Handle preflight requests explicitly
+app.options('*', cors());
 
 app.use(bodyParser.json({ limit: '50mb' }));
 
@@ -139,7 +142,8 @@ app.get('/health', async (_req, res) => {
       chain: status.chainspec_name,
       apiVersion: status.api_version,
       peers: status.peers.length,
-      rpc: RPC_URL
+      rpc: RPC_URL,
+      cors: 'enabled'
     });
   } catch (err) {
     res.status(500).json({
@@ -165,6 +169,18 @@ app.get('/deploy-status/:hash', async (req, res) => {
 
 /**
  * -------------------------
+ * Test CORS Endpoint
+ * -------------------------
+ */
+app.get('/test-cors', (_req, res) => {
+  res.json({
+    message: 'CORS is working!',
+    timestamp: new Date().toISOString()
+  });
+});
+
+/**
+ * -------------------------
  * Start Server
  * -------------------------
  */
@@ -176,4 +192,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('   POST /submit-deploy');
   console.log('   GET  /health');
   console.log('   GET  /deploy-status/:hash');
+  console.log('   GET  /test-cors');
+  console.log('');
+  console.log('🌐 CORS enabled for:');
+  console.log('   - http://localhost:3000');
+  console.log('   - http://localhost:3001');
+  console.log('   - https://fearless-laughter-production.up.railway.app');
+  console.log('   - https://caspercrediq-production.up.railway.app');
 });
