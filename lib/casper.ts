@@ -4,11 +4,14 @@
 import { CasperClient, CLPublicKey, CLValueParsers, CasperServiceByJsonRPC, RuntimeArgs } from 'casper-js-sdk';
 import { CASPER_CONFIG } from '@/utils/constants';
 
+// Get API URL from environment variable
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 /**
  * Submit a signed deploy via backend
  */
 export async function submitSignedDeploy(signedDeployJson: any): Promise<string> {
-  const res = await fetch('http://localhost:3001/submit-deploy', {
+  const res = await fetch(`${API_URL}/submit-deploy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ deploy: signedDeployJson }),
