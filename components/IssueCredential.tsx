@@ -8,7 +8,7 @@ import {
   DeployUtil,
   CLByteArray,
 } from 'casper-js-sdk';
-import { Copy, ExternalLink, CheckCircle, XCircle } from 'lucide-react';
+import { Copy, ExternalLink, CheckCircle, XCircle, User } from 'lucide-react';
 
 import { walletManager } from '@/lib/wallet';
 import { submitSignedDeploy } from '@/lib/casper';
@@ -31,6 +31,7 @@ function getDeployHashAsHex(deploy: DeployUtil.Deploy): string {
 }
 
 export default function IssueCredential() {
+  const [recipientPublicKey, setRecipientPublicKey] = useState('');
   const [role, setRole] = useState('');
   const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(false);
@@ -42,6 +43,7 @@ export default function IssueCredential() {
   const [walletState, setWalletState] = useState(walletManager.getState());
   const [deployHash, setDeployHash] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isValidPublicKey, setIsValidPublicKey] = useState<boolean | null>(null);
 
   useEffect(() => {
     const unsubscribe = walletManager.subscribe((state) => {
@@ -53,6 +55,22 @@ export default function IssueCredential() {
     return unsubscribe;
   }, []);
 
+  // Validate public key format
+  useEffect(() => {
+    if (!recipientPublicKey) {
+      setIsValidPublicKey(null);
+      return;
+    }
+
+    try {
+      // Try to parse the public key
+      CLPublicKey.fromHex(recipientPublicKey);
+      setIsValidPublicKey(true);
+    } catch {
+      setIsValidPublicKey(false);
+    }
+  }, [recipientPublicKey]);
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -61,6 +79,12 @@ export default function IssueCredential() {
 
   const openExplorer = (hash: string) => {
     window.open(`${CASPER_CONFIG.NETWORK.EXPLORER_URL}/deploy/${hash}`, '_blank');
+  };
+
+  const fillOwnAddress = () => {
+    if (walletState.publicKey) {
+      setRecipientPublicKey(walletState.publicKey);
+    }
   };
 
   const connectWallet = useCallback(async () => {
@@ -111,16 +135,34 @@ export default function IssueCredential() {
         throw new Error('Wallet not connected.');
       }
 
+      if (!recipientPublicKey) {
+        throw new Error('Please enter recipient public key.');
+      }
+
+      if (!isValidPublicKey) {
+        throw new Error('Invalid recipient public key format.');
+      }
+
       const freshState = await walletManager.syncWithWallet();
       if (!freshState.publicKey) {
         throw new Error('Wallet disconnected during operation.');
       }
 
+      // Issuer signs the transaction (connected wallet)
       const issuerPk = CLPublicKey.fromHex(freshState.publicKey);
-      const userAddress = createOdraAddress(freshState.publicKey);
+      
+      // Recipient receives the credential
+      const recipientAddress = createOdraAddress(recipientPublicKey);
+
+      console.log('Issuing credential:', {
+        issuer: freshState.publicKey,
+        recipient: recipientPublicKey,
+        role,
+        days
+      });
 
       const runtimeArgs = RuntimeArgs.fromMap({
-        user: userAddress,
+        user: recipientAddress,
         role: CLValueBuilder.string(role),
         ttl_seconds: CLValueBuilder.u64(days * 24 * 60 * 60),
       });
@@ -169,9 +211,11 @@ export default function IssueCredential() {
 
       setMessage({
         type: 'success',
-        text: '✅ Credential issued successfully!'
+        text: `✅ Credential issued successfully to ${recipientPublicKey.slice(0, 8)}...${recipientPublicKey.slice(-6)}!`
       });
 
+      // Clear form
+      setRecipientPublicKey('');
       setRole('');
       setDays(30);
     } catch (e: any) {
@@ -189,6 +233,9 @@ export default function IssueCredential() {
       } else if (e.message.includes('not connected') || e.message.includes('disconnected')) {
         errorText = 'Wallet disconnected';
         errorDetails = 'Please reconnect your wallet and try again.';
+      } else if (e.message.includes('Invalid') || e.message.includes('public key')) {
+        errorText = 'Invalid public key';
+        errorDetails = 'Please enter a valid Casper public key (starting with 01 or 02).';
       }
 
       setMessage({
@@ -272,6 +319,56 @@ export default function IssueCredential() {
       {/* Form */}
       {walletState.isConnected && (
         <div className="space-y-5">
+          {/* Recipient Public Key */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Recipient Public Key
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <User className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                value={recipientPublicKey}
+                onChange={(e) => setRecipientPublicKey(e.target.value)}
+                disabled={loading}
+                placeholder="01abc123... or 02def456..."
+                className={`w-full border rounded-lg p-3 pl-10 pr-24 focus:ring-2 focus:border-transparent transition-all font-mono text-sm ${
+                  isValidPublicKey === false 
+                    ? 'border-red-300 focus:ring-red-500' 
+                    : isValidPublicKey === true 
+                    ? 'border-green-300 focus:ring-green-500' 
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
+              />
+              <button
+                type="button"
+                onClick={fillOwnAddress}
+                disabled={loading}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors disabled:opacity-50"
+              >
+                Use Mine
+              </button>
+            </div>
+            {isValidPublicKey === false && (
+              <p className="text-xs text-red-600 mt-1 flex items-center">
+                <XCircle className="w-3 h-3 mr-1" />
+                Invalid public key format
+              </p>
+            )}
+            {isValidPublicKey === true && (
+              <p className="text-xs text-green-600 mt-1 flex items-center">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Valid public key
+              </p>
+            )}
+            <p className="text-xs text-gray-500 mt-1">
+              Enter the Casper public key of the account that will receive the credential
+            </p>
+          </div>
+
+          {/* Role Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Role
@@ -291,6 +388,7 @@ export default function IssueCredential() {
             </select>
           </div>
 
+          {/* Validity Period */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Validity Period (Days)
@@ -315,9 +413,10 @@ export default function IssueCredential() {
             </div>
           </div>
 
+          {/* Submit Button */}
           <button
             onClick={issueCredential}
-            disabled={!role || loading}
+            disabled={!role || !recipientPublicKey || !isValidPublicKey || loading}
             className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
           >
             {loading ? (

@@ -25,12 +25,8 @@ function createOdraAddress(publicKeyHex: string): CLByteArray {
   return new CLByteArray(bytes);
 }
 
-function getDeployHashAsHex(deploy: DeployUtil.Deploy): string {
-  const deployHash = deploy.hash;
-  return Buffer.from(deployHash).toString('hex');
-}
-
 export default function VerifyCredential() {
+  const [publicKeyToCheck, setPublicKeyToCheck] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{
     type: 'success' | 'error' | 'info' | 'warning';
@@ -44,6 +40,10 @@ export default function VerifyCredential() {
   useEffect(() => {
     const unsubscribe = walletManager.subscribe((state) => {
       setWalletState(state);
+      // Auto-fill with connected wallet's public key
+      if (state.publicKey && !publicKeyToCheck) {
+        setPublicKeyToCheck(state.publicKey);
+      }
     });
 
     walletManager.syncWithWallet().catch(console.error);
@@ -72,6 +72,9 @@ export default function VerifyCredential() {
 
       const state = await walletManager.connect();
       setWalletState(state);
+      if (state.publicKey) {
+        setPublicKeyToCheck(state.publicKey);
+      }
       setMessage({
         type: 'success',
         text: `Connected to ${state.walletType}`
@@ -109,13 +112,22 @@ export default function VerifyCredential() {
         throw new Error('Wallet not connected.');
       }
 
+      if (!publicKeyToCheck) {
+        throw new Error('Please enter a public key to verify.');
+      }
+
+      // Validate the public key format
+      if (!publicKeyToCheck.startsWith('01') && !publicKeyToCheck.startsWith('02')) {
+        throw new Error('Invalid public key format. Should start with 01 or 02.');
+      }
+
       const freshState = await walletManager.syncWithWallet();
       if (!freshState.publicKey) {
         throw new Error('Wallet disconnected during operation.');
       }
 
       const verifierPk = CLPublicKey.fromHex(freshState.publicKey);
-      const userAddress = createOdraAddress(freshState.publicKey);
+      const userAddress = createOdraAddress(publicKeyToCheck); // Use the public key from input
 
       const runtimeArgs = RuntimeArgs.fromMap({
         user: userAddress,
@@ -160,12 +172,12 @@ export default function VerifyCredential() {
       const signedDeployJson = DeployUtil.deployToJson(signedDeploy);
       const hash = await submitSignedDeploy(signedDeployJson);
       
-      // Store the deploy hash
       setDeployHash(hash);
 
       setMessage({
         type: 'success',
-        text: '✅ Credential verified successfully!'
+        text: '✅ Credential verification transaction submitted!',
+        details: 'Check the deploy result on the explorer to see if the credential is valid.'
       });
     } catch (e: any) {
       console.error('Verify credential error:', e);
@@ -194,6 +206,12 @@ export default function VerifyCredential() {
       setLoading(false);
     }
   }
+
+  const useMyWallet = () => {
+    if (walletState.publicKey) {
+      setPublicKeyToCheck(walletState.publicKey);
+    }
+  };
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg max-w-xl mx-auto border border-gray-100">
@@ -267,13 +285,38 @@ export default function VerifyCredential() {
         <div className="space-y-5">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-800">
-              Click the button below to verify if your connected wallet has a valid credential.
+              Enter a public key to check if it has a valid credential. By default, your connected wallet's public key is used.
+            </p>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Public Key to Verify
+              </label>
+              <button
+                onClick={useMyWallet}
+                className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 py-1 px-2 rounded transition-colors"
+              >
+                Use My Wallet
+              </button>
+            </div>
+            <input
+              type="text"
+              value={publicKeyToCheck}
+              onChange={(e) => setPublicKeyToCheck(e.target.value)}
+              disabled={loading}
+              placeholder="01a1b2c3d4e5f6... or 02a1b2c3d4e5f6..."
+              className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all font-mono text-sm"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Enter the public key to check (starts with 01 or 02)
             </p>
           </div>
 
           <button
             onClick={verifyCredential}
-            disabled={loading}
+            disabled={loading || !publicKeyToCheck}
             className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
           >
             {loading ? (
@@ -300,7 +343,7 @@ export default function VerifyCredential() {
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold text-blue-800 flex items-center">
               <CheckCircle className="w-4 h-4 mr-2" />
-              Transaction Successful
+              Transaction Submitted
             </h3>
             <button
               onClick={() => openExplorer(deployHash)}
@@ -335,6 +378,10 @@ export default function VerifyCredential() {
               {deployHash}
             </p>
           </div>
+          
+          <p className="text-xs text-blue-700 mt-2">
+            💡 Check the deploy execution result on the explorer to see the actual validation result (true/false).
+          </p>
         </div>
       )}
 
@@ -370,6 +417,20 @@ export default function VerifyCredential() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Instructions */}
+      {walletState.isConnected && (
+        <div className="mt-6 pt-4 border-t border-gray-200">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">How to verify:</h4>
+          <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+            <li>Connect your wallet (used to sign the transaction)</li>
+            <li>Enter the public key you want to check (or use your own)</li>
+            <li>Click "Verify Credential"</li>
+            <li>Sign the transaction in your wallet</li>
+            <li>View the result on the blockchain explorer</li>
+          </ol>
         </div>
       )}
     </div>
