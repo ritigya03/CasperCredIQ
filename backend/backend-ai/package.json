@@ -1,9 +1,13 @@
 {
   "name": "ai-server",
   "version": "1.0.0",
+  "type": "module",
   "main": "aiServer.js",
   "scripts": {
     "start": "node aiServer.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
   },
   "engines": {
     "node": ">=18.0.0"

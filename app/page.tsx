@@ -16,6 +16,15 @@ import {
   Info,
   Menu,
   X,
+  Building,
+  Users,
+  Key,
+  Shield,
+  RefreshCw,
+  Clock,
+  FileText,
+  Copy,
+  Check,
 } from "lucide-react"
 import Link from "next/link"
 import WalletConnect from "@/components/WalletConnect"
@@ -34,7 +43,7 @@ const Button = ({
   const baseStyles = "font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2"
   
   const variants = {
-    default: "bg-blue-500 hover:bg-blue-600 text-white shadow-sm hover:shadow-md",
+    default: "bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md",
     secondary: "bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 hover:border-gray-400",
     outline: "bg-transparent hover:bg-blue-50 text-blue-600 border border-blue-300 hover:border-blue-400",
     ghost: "bg-transparent hover:bg-gray-100 text-gray-700 hover:text-gray-900",
@@ -50,7 +59,6 @@ const Button = ({
   
   return (
     <button
-      
       onClick={onClick}
       disabled={disabled}
       className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -77,28 +85,93 @@ const CardContent = ({ children, className = "" }) => {
   )
 }
 
-export default function LandingPage() {
-  const [isConnected, setIsConnected] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const router = useRouter()
+// Contract Hash Component
+const ContractHashDisplay = () => {
+  const contractHash = "afd7ca51f8ab1d415b7abf2439074924bd486ad12f0babfdf539e891ef6c4a1a";
+  const [copied, setCopied] = useState(false);
 
-  const handleConnect = () => {
-    setIsConnected(true)
-  }
-
-  const handleStart = () => {
-    router.push("/dashboard")
-  }
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(contractHash);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
-    <div className="flex min-h-screen flex-col font-sans bg-gradient-to-br from-blue-50 via-pink-50 to-green-50">
-      <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/80 backdrop-blur-xl">
+    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 md:p-6 mb-8 md:mb-12">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <Database className="h-5 w-5 text-blue-600" />
+            <h3 className="text-lg font-bold text-gray-900">Live Smart Contract</h3>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              Deployed
+            </span>
+          </div>
+          <p className="text-sm text-gray-600 mb-3">
+            This is the main CasperCredIQ contract address on the Casper Network
+          </p>
+          <div className="flex items-center gap-2">
+            <div className="font-mono text-sm bg-gray-100 px-3 py-2 rounded-lg flex-1 overflow-x-auto">
+              {contractHash}
+            </div>
+            <button
+              onClick={copyToClipboard}
+              className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+              title="Copy contract hash"
+            >
+              {copied ? (
+                <Check className="h-5 w-5 text-green-600" />
+              ) : (
+                <Copy className="h-5 w-5 text-gray-600" />
+              )}
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(`https://testnet.cspr.live/contract/${contractHash}`, '_blank')}
+            className="whitespace-nowrap"
+          >
+            View on Explorer
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open('https://github.com/ritigya03/CasperCredIQ', '_blank')}
+            className="whitespace-nowrap"
+          >
+            View Source
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function LandingPage() {
+  const [isConnected, setIsConnected] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const router = useRouter();
+
+  const handleConnect = () => {
+    setIsConnected(true);
+  };
+
+  const handleStart = () => {
+    router.push("/dashboard");
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col font-sans bg-gradient-to-br from-gray-50 via-white to-blue-50">
+      <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/90 backdrop-blur-xl">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500 text-white">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
               <ShieldCheck className="h-5 w-5" />
             </div>
-            <span className="text-xl font-bold text-blue-700">
+            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               CasperCredIQ
             </span>
           </Link>
@@ -112,11 +185,11 @@ export default function LandingPage() {
           </button>
           
           <nav className="hidden md:flex items-center space-x-8">
-            {["Features", "Use Cases", "Why Casper"].map((item) => (
+            {["Product", "Solutions", "Technology", "Contract"].map((item) => (
               <Link
                 key={item}
                 href={`#${item.toLowerCase().replace(" ", "-")}`}
-                className="text-sm font-bold uppercase tracking-widest text-gray-600 hover:text-blue-600 transition-colors"
+                className="text-sm font-semibold text-gray-700 hover:text-blue-600 transition-colors"
               >
                 {item}
               </Link>
@@ -131,11 +204,11 @@ export default function LandingPage() {
         {mobileMenuOpen && (
           <div className="md:hidden bg-white border-b border-gray-100 py-4 px-6">
             <div className="flex flex-col space-y-4">
-              {["Features", "Use Cases", "Why Casper"].map((item) => (
+              {["Product", "Solutions", "Technology", "Contract"].map((item) => (
                 <Link
                   key={item}
                   href={`#${item.toLowerCase().replace(" ", "-")}`}
-                  className="text-sm font-bold uppercase tracking-widest text-gray-600 hover:text-blue-600 transition-colors"
+                  className="text-sm font-semibold text-gray-700 hover:text-blue-600 transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {item}
@@ -148,198 +221,212 @@ export default function LandingPage() {
 
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="relative overflow-hidden py-20 md:py-32">
-          <div className="absolute top-[-10%] left-[-5%] w-[50%] h-[50%] rounded-full bg-blue-100/50 blur-[120px] -z-10 animate-pulse" />
-          <div
-            className="absolute bottom-[-10%] right-[-5%] w-[50%] h-[50%] rounded-full bg-pink-100/50 blur-[120px] -z-10 animate-pulse"
-            style={{ animationDelay: "2s" }}
-          />
-
-          <div className="container mx-auto px-4 md:px-6 text-center">
-            <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 mb-8 md:mb-10">
-              <span className="mr-2 flex h-2 w-2 rounded-full bg-blue-500 animate-ping"></span>
-              Made using Casper Network
-            </div>
-            <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tighter mb-6 md:mb-8 mx-auto leading-[0.9] text-gray-900">
-              On-Chain Credentials for{" "}
-              <span className="text-blue-600 italic block sm:inline">
-                Real-World Trust
-              </span>
-            </h1>
-            <p className="max-w-2xl text-base md:text-lg text-gray-600 mb-8 md:mb-12 mx-auto leading-relaxed font-medium">
-              Issue, verify, and revoke credentials directly on the Casper blockchain — secured by smart contracts and
-              assisted by AI.
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-              {!isConnected ? (
-                <Button
-                  size="lg"
-                  onClick={handleConnect}
-                  className="h-12 md:h-14 rounded-2xl px-6 md:px-10 text-base md:text-lg font-bold bg-blue-500 hover:bg-blue-600 text-white shadow-2xl"
-                >
-                  Connect Wallet 
-                </Button>
-              ) : (
-                <Button
-                  size="lg"
-                  onClick={handleStart}
-                  className="h-12 md:h-14 rounded-2xl px-6 md:px-10 text-base md:text-lg font-bold bg-blue-500 hover:bg-blue-600 text-white shadow-2xl"
-                >
-                  Get Started 
-                </Button>
-              )}
-              <Button
-  variant="outline"
-  size="lg"
-  onClick={() =>
-    window.open(
-      'https://github.com/ritigya03/CasperCredIQ',
-      '_blank',
-      'noopener,noreferrer'
-    )
-  }
-  className="h-12 md:h-14 rounded-2xl px-6 md:px-10 text-base md:text-lg font-bold bg-white hover:bg-gray-50 border-gray-300 shadow-lg text-gray-700"
->
-  View Resources
-</Button>
-
-            </div>
-          </div>
-        </section>
-
-        {/* What is CasperCredIQ? */}
-        <section className="bg-white/80 py-16 md:py-24 border-y border-gray-200">
+        <section className="relative overflow-hidden py-16 md:py-24">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-transparent to-indigo-50/50 -z-10" />
+          
           <div className="container mx-auto px-4 md:px-6">
-            <div className="grid gap-8 md:gap-12 lg:grid-cols-2 lg:items-center">
-              <div className="space-y-6">
-                <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight text-balance leading-tight text-gray-900">
-                  Decentralized Trust, Redefined.
-                </h2>
-                <div className="space-y-4 md:space-y-6 text-base md:text-lg text-gray-600 leading-relaxed">
-                  <p>
-                    CasperCredIQ shifts the paradigm of trust. Credentials are issued directly on-chain, eliminating the
-                    need for vulnerable centralized databases.
-                  </p>
-                  <p className="font-medium text-gray-900 italic bg-blue-50 p-4 rounded-xl border border-blue-100">
-                    "Think of it as a school or employee ID card — but on the blockchain."
-                  </p>
-                  <ul className="space-y-3 md:space-y-4">
-                    <li className="flex items-start gap-3">
-                      <CheckCircle2 className="mt-1 h-5 w-5 text-blue-500 shrink-0" />
-                      <span>Tamper-proof and verifiable by anyone, anywhere.</span>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <CheckCircle2 className="mt-1 h-5 w-5 text-blue-500 shrink-0" />
-                      <span>Instant global revocation without delays.</span>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <CheckCircle2 className="mt-1 h-5 w-5 text-blue-500 shrink-0" />
-                      <span>Permanent transparency backed by Casper smart contracts.</span>
-                    </li>
-                  </ul>
-                </div>
+          
+            <div className="text-center max-w-4xl mx-auto">
+              <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-blue-700 mb-6">
+                <Shield className="h-3 w-3 mr-2" />
+                Enterprise-Grade On-Chain Access Control
               </div>
-              <div className="relative flex justify-center">
-                <div className="relative aspect-square w-full max-w-md rounded-2xl bg-gradient-to-br from-blue-50 to-pink-50 p-6 md:p-8 flex items-center justify-center border border-gray-300 shadow-lg">
-                  <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-2xl opacity-10">
-                    <Database className="h-full w-full rotate-12 scale-150 text-blue-400" />
-                  </div>
-                  <div className="relative z-10 w-full rounded-xl bg-white p-4 md:p-6 shadow-2xl border border-gray-300">
-                    <div className="mb-4 flex items-center justify-between border-b border-gray-300 pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-100 to-pink-100" />
-                        <div>
-                          <div className="h-3 w-24 rounded bg-gray-300 mb-2" />
-                          <div className="h-2 w-16 rounded bg-gray-200" />
-                        </div>
-                      </div>
-                      <ShieldCheck className="h-6 w-6 text-blue-500" />
-                    </div>
-                    <div className="space-y-3">
-                      <div className="h-3 w-full rounded bg-gray-200" />
-                      <div className="h-3 w-[80%] rounded bg-gray-200" />
-                      <div className="h-3 w-[60%] rounded bg-gray-200" />
-                    </div>
-                    <div className="mt-6 flex justify-end">
-                      <div className="inline-flex items-center rounded-md bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
-                        VERIFIED ON-CHAIN
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              
+              <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-6 text-gray-900">
+                Beyond Static Credentials:
+                <span className="block mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  Active Permissions on Chain
+                </span>
+              </h1>
+              
+              <p className="text-lg md:text-xl text-gray-600 mb-8 leading-relaxed max-w-3xl mx-auto">
+                CasperCredIQ transforms credentials from static documents into dynamic, enforceable permissions using 
+                Role-Based Access Control (RBAC) on the Casper blockchain. Each credential represents a real-time 
+                authorization decision — time-bound, auditable, and instantly revocable.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
+                {!isConnected ? (
+                  <Button
+                    size="xl"
+                    onClick={handleConnect}
+                    className="rounded-xl px-8 py-4 text-lg font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all"
+                  >
+                    <ShieldCheck className="inline mr-2 h-5 w-5" />
+                    Connect Wallet to Begin
+                  </Button>
+                ) : (
+                  <Button
+                    size="xl"
+                    onClick={handleStart}
+                    className="rounded-xl px-8 py-4 text-lg font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all"
+                  >
+                    <LayoutDashboard className="inline mr-2 h-5 w-5" />
+                    Enter Dashboard
+                  </Button>
+                )}
+                
+                <Button
+                  variant="outline"
+                  size="xl"
+                  onClick={() => window.open('https://github.com/ritigya03/CasperCredIQ', '_blank')}
+                  className="rounded-xl px-8 py-4 text-lg font-semibold"
+                >
+                  <FileText className="inline mr-2 h-5 w-5" />
+                  Repository
+                </Button>
               </div>
             </div>
           </div>
         </section>
-
-        {/* Core Features */}
-        <section id="features" className="py-16 md:py-24 relative">
+  {/* Contract Hash Display */}
+  <div className="container mx-auto px-4 md:px-6">
+ <ContractHashDisplay />
+  </div>
+           
+            
+        {/* The Problem Section */}
+        <section className="py-16 md:py-24 bg-white border-y border-gray-200">
           <div className="container mx-auto px-4 md:px-6">
-            <div className="text-center mb-12 md:mb-16">
-              <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight mb-4 leading-tight text-gray-900">
-                Powerful Features for Modern Issuers
+            <div className="max-w-3xl mx-auto text-center mb-12">
+              <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900">
+                Solving Real Security Problems
               </h2>
-              <p className="text-gray-600 text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
-                Built from the ground up to support high-stakes credential management with enterprise-grade reliability.
+              <p className="text-lg text-gray-600">
+                Traditional credential systems fail where it matters most: dynamic access control and instant revocation
               </p>
             </div>
-            <div className="grid gap-6 md:gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            
+            <div className="grid md:grid-cols-2 gap-20 ml-[8rem]">
+              <div className="space-y-6">
+                <h3 className="text-xl  font-bold text-gray-900 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                    <Key className="h-5 w-5 text-red-600" />
+                  </div>
+                  The Static Credential Problem
+                </h3>
+                <ul className="space-y-4">
+                  <li className="flex items-start gap-3">
+                    <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+                    <span>ID Proofs, PDFs or certificates cannot be revoked in real-time</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+                    <span>Centralized databases create single points of failure</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+                    <span>No built-in governance or audit trails</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+                    <span>Manual processes for employee onboarding/offboarding</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <div className="space-y-6">
+                <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                    <ShieldCheck className="h-5 w-5 text-green-600" />
+                  </div>
+                  The CasperCredIQ Solution
+                </h3>
+                <ul className="space-y-4">
+                  <li className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+                    <span>Active permissions enforced on-chain via RBAC</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+                    <span>Instant global revocation without delays</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+                    <span>AI-assisted justification engine for safe issuance</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+                    <span>Complete audit trail with time-bound permissions</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Core Technology */}
+        <section id="technology" className="py-16 md:py-24 bg-gradient-to-b from-blue-50 to-white">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900">
+                Enterprise-Grade Technology Stack
+              </h2>
+              <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+                Combining AI decision support with decentralized, tamper-proof enforcement on Casper blockchain
+              </p>
+            </div>
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
               {[
                 {
-                  title: "On-Chain Issuance",
-                  icon: ShieldCheck,
-                  color: "bg-blue-100",
-                  textColor: "text-blue-600",
-                  desc: "Directly mint credentials onto the Casper blockchain as unique digital assets.",
+                  title: "Role-Based Access Control (RBAC)",
+                  icon: Users,
+                  color: "from-blue-500 to-blue-600",
+                  desc: "Foundational security concept implemented natively on-chain. Define roles like student, developer, moderator, or administrator with precise permissions.",
+                  features: ["Granular permissions", "Least-privilege principle", "Role hierarchy"]
                 },
                 {
-                  title: "Transparent Revocation",
-                  icon: History,
-                  color: "bg-pink-100",
-                  textColor: "text-pink-600",
-                  desc: "Instant and permanent revocation records that are publicly verifiable.",
+                  title: "AI Credential Justification",
+                  icon: Cpu,
+                  color: "from-purple-500 to-purple-600",
+                  desc: "Evaluates user request context, justification, and risk before recommending approval. Maintains human oversight with issuer retaining final authority.",
+                  features: ["Risk assessment", "Context evaluation", "Decision transparency"]
+                },
+                {
+                  title: "Smart Contract Enforcement",
+                  icon: FileText,
+                  color: "from-green-500 to-green-600",
+                  desc: "All authorization logic is executed through upgradeable smart contracts on Casper Network, ensuring tamper-proof enforcement.",
+                  features: ["Upgradeable contracts", "Gas-efficient", "Transparent logic"]
+                },
+                {
+                  title: "Time-Bound Credentials",
+                  icon: Clock,
+                  color: "from-orange-500 to-orange-600",
+                  desc: "Set expiration dates and validity periods for all credentials. Automatic expiration without manual intervention.",
+                  features: ["Automatic expiry", "Renewable permissions", "Temporal control"]
+                },
+                {
+                  title: "Instant Revocation",
+                  icon: RefreshCw,
+                  color: "from-red-500 to-red-600",
+                  desc: "Global revocation capabilities that take effect immediately across all systems. Perfect for emergency offboarding scenarios.",
+                  features: ["Immediate effect", "Global scope", "Audit trail"]
                 },
                 {
                   title: "Public Verification",
                   icon: Globe,
-                  color: "bg-green-100",
-                  textColor: "text-green-600",
-                  desc: "Enable third parties to verify credential authenticity without needing private API access.",
-                },
-                {
-                  title: "Upgradeable Contracts",
-                  icon: Zap,
-                  color: "bg-yellow-100",
-                  textColor: "text-yellow-600",
-                  desc: "Leverage Casper's native upgradeable smart contracts to evolve your credential system.",
-                },
-                {
-                  title: "AI Justification",
-                  icon: Cpu,
-                  color: "bg-blue-100",
-                  textColor: "text-blue-600",
-                  desc: "Utilize AI to evaluate and document the reasoning behind credential awards.",
-                },
-                {
-                  title: "Secure Account Model",
-                  icon: Lock,
-                  color: "bg-pink-100",
-                  textColor: "text-pink-600",
-                  desc: "Utilize Casper's advanced permission system for organizational management.",
-                },
-              ].map((f, i) => (
-                <Card
-                  key={i}
-                  className="transition-all hover:scale-[1.02] hover:shadow-xl"
-                >
-                  <CardContent className="p-6 md:p-8">
-                    <div
-                      className={`mb-4 md:mb-6 inline-flex h-12 w-12 md:h-14 md:w-14 items-center justify-center rounded-2xl ${f.color} ${f.textColor}`}
-                    >
-                      <f.icon className="h-6 w-6 md:h-7 md:w-7" />
+                  color: "from-indigo-500 to-indigo-600",
+                  desc: "Anyone can verify credential authenticity without needing API access or special permissions. Full transparency with privacy controls.",
+                  features: ["Zero-knowledge proofs", "Public auditability", "Privacy-preserving"]
+                }
+              ].map((tech, i) => (
+                <Card key={i} className="hover:shadow-xl transition-shadow duration-300">
+                  <CardContent className="h-full flex flex-col">
+                    <div className={`mb-4 h-12 w-12 rounded-xl bg-gradient-to-r ${tech.color} flex items-center justify-center`}>
+                      <tech.icon className="h-6 w-6 text-white" />
                     </div>
-                    <h3 className="text-lg md:text-xl font-bold mb-2 md:mb-3 text-gray-900">{f.title}</h3>
-                    <p className="text-sm md:text-base text-gray-600 leading-relaxed">{f.desc}</p>
+                    <h3 className="text-xl font-bold mb-3 text-gray-900">{tech.title}</h3>
+                    <p className="text-gray-600 mb-4 flex-grow">{tech.desc}</p>
+                    <div className="space-y-2">
+                      {tech.features.map((feature, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
+                          <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          {feature}
+                        </div>
+                      ))}
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -347,147 +434,216 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Use Cases */}
-        <section id="use-cases" className="bg-gradient-to-br from-pink-50 via-blue-50 to-green-50 py-16 md:py-24">
+        {/* Solutions Section */}
+        <section id="solutions" className="py-16 md:py-24 bg-white">
           <div className="container mx-auto px-4 md:px-6">
-            <div className="text-center mb-12 md:mb-16">
-              <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight mb-4 leading-tight text-gray-900">
-                Real-World Use Cases
+            <div className="text-center mb-16">
+              <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900">
+                Enterprise Solutions
               </h2>
-              <p className="text-gray-600 text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
-                From education to enterprise, CasperCredIQ delivers trust where it matters most.
+              <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+                Addressing critical access control challenges across industries
               </p>
             </div>
-            <div className="grid gap-6 md:gap-8 md:grid-cols-2 lg:grid-cols-3">
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               {[
                 {
-                  title: "Educational Institutions",
-                  desc: "Issue tamper-proof diplomas and certifications that students can verify globally.",
-                  color: "bg-blue-50",
-                  borderColor: "border-blue-200",
+                  title: "Privileged Access Management",
+                  icon: Key,
+                  color: "bg-blue-100 text-blue-700",
+                  desc: "Secure administrative access to critical systems with real-time revocation capabilities."
                 },
                 {
-                  title: "Corporate Training",
-                  desc: "Track employee qualifications with blockchain-backed training records.",
-                  color: "bg-green-50",
-                  borderColor: "border-green-200",
+                  title: "Employee Lifecycle",
+                  icon: Users,
+                  color: "bg-green-100 text-green-700",
+                  desc: "Automate onboarding and offboarding processes with instant permission updates."
                 },
                 {
-                  title: "Professional Licensing",
-                  desc: "Enable medical, legal, and other professionals to maintain verified credentials.",
-                  color: "bg-pink-50",
-                  borderColor: "border-pink-200",
+                  title: "DAO Governance",
+                  icon: Building,
+                  color: "bg-purple-100 text-purple-700",
+                  desc: "Transparent voting rights and membership management for decentralized organizations."
                 },
                 {
-                  title: "Supply Chain Verification",
-                  desc: "Authenticate products and materials with transparent credential tracking.",
-                  color: "bg-yellow-50",
-                  borderColor: "border-yellow-200",
+                  title: "Academic Credentials",
+                  icon: FileText,
+                  color: "bg-orange-100 text-orange-700",
+                  desc: "Issue verifiable diplomas and certifications with built-in expiration and renewal."
                 },
                 {
-                  title: "Government Identity",
-                  desc: "Secure digital IDs that citizens control and governments can verify.",
-                  color: "bg-blue-50",
-                  borderColor: "border-blue-200",
+                  title: "Platform Security",
+                  icon: Shield,
+                  color: "bg-red-100 text-red-700",
+                  desc: "Protect SaaS platforms with granular access controls and audit trails."
                 },
                 {
-                  title: "Event Access Control",
-                  desc: "Manage ticketing and exclusive access with revocable smart credentials.",
-                  color: "bg-pink-50",
-                  borderColor: "border-pink-200",
+                  title: "Supply Chain",
+                  icon: Globe,
+                  color: "bg-indigo-100 text-indigo-700",
+                  desc: "Verify partner credentials and certifications in complex supply networks."
                 },
-              ].map((useCase, i) => (
-                <div
-                  key={i}
-                  className={`${useCase.color} border ${useCase.borderColor} shadow-lg hover:shadow-xl transition-shadow rounded-xl p-6`}
-                >
-                  <h3 className="text-base md:text-lg font-bold mb-2 text-gray-900">{useCase.title}</h3>
-                  <p className="text-sm text-gray-700 leading-relaxed">{useCase.desc}</p>
+                {
+                  title: "Healthcare Access",
+                  icon: ShieldCheck,
+                  color: "bg-teal-100 text-teal-700",
+                  desc: "Manage HIPAA-compliant access to sensitive patient data and systems."
+                },
+                {
+                  title: "Financial Compliance",
+                  icon: Lock,
+                  color: "bg-amber-100 text-amber-700",
+                  desc: "Enforce SOX and other regulatory requirements with immutable audit trails."
+                }
+              ].map((solution, i) => (
+                <div key={i} className="group">
+                  <div className="h-full p-6 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all">
+                    <div className={`inline-flex p-3 rounded-lg ${solution.color} mb-4`}>
+                      <solution.icon className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-lg font-bold mb-2 text-gray-900">{solution.title}</h3>
+                    <p className="text-sm text-gray-600">{solution.desc}</p>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* Why Casper */}
-        <section id="why-casper" className="py-16 md:py-24 bg-white/80">
+        {/* Why Casper Network */}
+        <section className="py-16 md:py-24  bg-gray-900 text-white">
           <div className="container mx-auto px-4 md:px-6">
-            <div className="text-center mb-12 md:mb-16">
-              <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight mb-4 leading-tight text-gray-900">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">
                 Why Casper Network?
               </h2>
-              <p className="text-gray-600 text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
-                Casper's architecture provides the perfect foundation for enterprise credential systems.
+              <p className="text-lg text-gray-300 max-w-3xl mx-auto">
+                The ideal foundation for enterprise-grade credential systems
               </p>
             </div>
-            <div className="grid gap-6 md:gap-8 lg:grid-cols-2">
-              <div className="bg-blue-50 border-blue-200 shadow-lg rounded-xl p-6 md:p-8">
-                <h3 className="text-lg md:text-xl lg:text-2xl font-bold mb-3 md:mb-4 flex items-center gap-3 text-gray-900">
-                  <Zap className="h-6 w-6 md:h-8 md:w-8 text-blue-600" />
-                  Upgradeable Smart Contracts
-                </h3>
-                <p className="text-sm md:text-base text-gray-700 leading-relaxed">
-                  Unlike Ethereum, Casper allows you to upgrade smart contracts without redeploying. Your credential
-                  system can evolve seamlessly as requirements change.
-                </p>
-              </div>
-              <div className="bg-green-50 border-green-200 shadow-lg rounded-xl p-6 md:p-8">
-                <h3 className="text-lg md:text-xl lg:text-2xl font-bold mb-3 md:mb-4 flex items-center gap-3 text-gray-900">
-                  <Lock className="h-6 w-6 md:h-8 md:w-8 text-green-600" />
-                  Enterprise-Grade Security
-                </h3>
-                <p className="text-sm md:text-base text-gray-700 leading-relaxed">
-                  Casper's account-based model and advanced permission system provide institutional-grade security for
-                  managing credentials at scale.
-                </p>
-              </div>
-              <div className="bg-pink-50 border-pink-200 shadow-lg rounded-xl p-6 md:p-8">
-                <h3 className="text-lg md:text-xl lg:text-2xl font-bold mb-3 md:mb-4 flex items-center gap-3 text-gray-900">
-                  <Database className="h-6 w-6 md:h-8 md:w-8 text-pink-600" />
-                  Low, Predictable Costs
-                </h3>
-                <p className="text-sm md:text-base text-gray-700 leading-relaxed">
-                  Casper's gas fee model ensures predictable transaction costs, making large-scale credential
-                  deployments financially sustainable.
-                </p>
-              </div>
-              <div className="bg-yellow-50 border-yellow-200 shadow-lg rounded-xl p-6 md:p-8">
-                <h3 className="text-lg md:text-xl lg:text-2xl font-bold mb-3 md:mb-4 flex items-center gap-3 text-gray-900">
-                  <Globe className="h-6 w-6 md:h-8 md:w-8 text-yellow-600" />
-                  Developer-Friendly Tools
-                </h3>
-                <p className="text-sm md:text-base text-gray-700 leading-relaxed">
-                  Comprehensive SDKs and documentation make building on Casper accessible, even for teams new to
-                  blockchain development.
-                </p>
-              </div>
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+              {[
+                {
+                  title: "Upgradeable Contracts",
+                  icon: RefreshCw,
+                  desc: "Evolve your credential system without redeployment. Casper's unique contract upgradeability ensures long-term viability.",
+                  highlight: "Future-proof architecture"
+                },
+                {
+                  title: "Predictable Costs",
+                  icon: Database,
+                  desc: "Stable gas fees enable predictable operational costs for large-scale credential deployments.",
+                  highlight: "Enterprise budgeting"
+                },
+                {
+                  title: "Advanced Security",
+                  icon: Shield,
+                  desc: "Account-based model with sophisticated permission systems provides institutional-grade security.",
+                  highlight: "Military-grade security"
+                },
+                {
+                  title: "Developer Experience",
+                  icon: Zap,
+                  desc: "Comprehensive SDKs, clear documentation, and familiar programming models accelerate development.",
+                  highlight: "Rapid deployment"
+                }
+              ].map((reason, i) => (
+                <div key={i} className="relative">
+                  <div className="absolute -top-4 -left-4 h-8 w-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 opacity-20" />
+                  <div className="h-full p-6 rounded-xl border border-gray-700 bg-gray-800/50 backdrop-blur-sm">
+                    <div className="mb-4 h-12 w-12 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center">
+                      <reason.icon className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-xl font-bold mb-2">{reason.title}</h3>
+                    <p className="text-gray-300 mb-3">{reason.desc}</p>
+                    <div className="inline-flex items-center px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-sm font-medium">
+                      {reason.highlight}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
         {/* CTA Section */}
-        <section className="py-16 md:py-14 bg-blue-200">
+        <section className="py-16 md:py-20  bg-blue-100">
           <div className="container mx-auto px-4 md:px-6 text-center">
-            <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight mb-4 md:mb-6 leading-tight">
-              Ready to Transform Trust?
+            <h2 className="text-3xl md:text-4xl font-bold mb-6">
+              Ready to Transform Your Access Control?
             </h2>
-            <p className="text-base md:text-lg  mb-8 md:mb-3 max-w-2xl mx-auto leading-relaxed">
-              Join organizations worldwide that are building the future of verifiable credentials on Casper.
+            <p className="text-xl  mb-5 max-w-2xl mx-auto">
+              Join forward-thinking enterprises building secure, scalable credential systems on Casper.
             </p>
-          
+           
+            
+            {/* Contract Hash Reminder */}
+            <div className=" pt-3 border-t border-blue-600/20">
+              <p className=" mb-4">Live on Casper Network</p>
+              <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-lg">
+                <Database className="h-4 w-4" />
+                <code className="text-sm font-mono ">
+                  afd7ca51f8ab1d415b7abf2439074924...c4a1a
+                </code>
+              </div>
+            </div>
           </div>
         </section>
       </main>
 
       <footer className="py-8 md:py-12 bg-gray-900 text-gray-400">
-        <div className="container mx-auto px-4 md:px-6 text-center space-y-4">
-          <p className="text-sm font-bold uppercase tracking-widest">
-            Made using <strong className="text-white">Casper</strong> • Decentralized Trust
-          </p>
-          <div className="h-px w-12 bg-blue-500/50 mx-auto" />
-          <p className="text-[10px] uppercase tracking-[0.3em] font-medium text-gray-600">
-            © 2026 CasperCredIQ Protocol • Built for the Future
-          </p>
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="grid md:grid-cols-4 gap-8 mb-8">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
+                  <ShieldCheck className="h-5 w-5 text-white" />
+                </div>
+                <span className="text-lg font-bold text-white">CasperCredIQ</span>
+              </div>
+              <p className="text-sm text-gray-500">
+                Enterprise-grade on-chain credential and access control infrastructure
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="text-white font-semibold mb-4">Product</h4>
+              <ul className="space-y-2 text-sm">
+                <li><a href="#technology" className="hover:text-white transition-colors">Technology</a></li>
+                <li><a href="#solutions" className="hover:text-white transition-colors">Solutions</a></li>
+                <li><a href="#contract" className="hover:text-white transition-colors">Smart Contract</a></li>
+              </ul>
+            </div>
+            
+            <div>
+              <h4 className="text-white font-semibold mb-4">Resources</h4>
+              <ul className="space-y-2 text-sm">
+                <li><a href="https://github.com/ritigya03/CasperCredIQ" target="_blank" className="hover:text-white transition-colors">GitHub Repository</a></li>
+                <li><a href="https://docs.casper.network/" target="_blank" className="hover:text-white transition-colors">Casper Documentation</a></li>
+                <li><a href="https://cspr.live/" target="_blank" className="hover:text-white transition-colors">Casper Explorer</a></li>
+              </ul>
+            </div>
+            
+            <div>
+              <h4 className="text-white font-semibold mb-4">Use Cases</h4>
+              <ul className="space-y-2 text-sm">
+                <li className="hover:text-white transition-colors">Enterprise Access</li>
+                <li className="hover:text-white transition-colors">DAO Governance</li>
+                <li className="hover:text-white transition-colors">Academic Credentials</li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="pt-8 border-t border-gray-800 text-center">
+            <p className="text-sm font-medium text-gray-500">
+              © 2026 CasperCredIQ Protocol • Built for Enterprise Security on Casper Network
+            </p>
+            <p className="text-xs text-gray-600 mt-2">
+              Contract: afd7ca51f8ab1d415b7abf2439074924bd486ad12f0babfdf539e891ef6c4a1a
+            </p>
+          </div>
         </div>
       </footer>
     </div>
