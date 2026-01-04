@@ -1,12 +1,11 @@
-// app/page.tsx
-"use client"
+// dashboard/page.tsx
+"use client";
 
-import WalletConnect from "@/components/WalletConnect"
-import IssueCredential from "@/components/IssueCredential"
-import VerifyStatus from "@/components/VerifyStatus"
-import RoleResources from "@/components/RoleResources"
-import AIVerificationForm from "@/components/AIVerificationForm"
-import Link from "next/link"
+import WalletConnect from "@/components/WalletConnect";
+import IssueCredential from "@/components/IssueCredential";
+import RoleResources from "@/components/RoleResources";
+import AIVerificationForm from "@/components/AIVerificationForm";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -16,12 +15,38 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">🔐 Casper Credentials</h1>
-              <p className="text-sm text-gray-600 mt-1">Decentralized Role-Based Access Control</p>
+              <h1 className="text-2xl font-bold text-gray-900">
+                🔐 Casper Credentials
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">
+                Decentralized Role-Based Access Control
+              </p>
             </div>
 
             <div className="flex items-center space-x-4">
-              {/* Simple Admin Button - Always visible */}
+              {/* Verify Button */}
+              <Link
+                href="/verify"
+                className="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                Verify Credential
+              </Link>
+
+              {/* Admin Button */}
               <Link
                 href="/admin"
                 className="inline-flex items-center px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-lg transition-colors"
@@ -74,80 +99,60 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Grid Layout - Keep as is */}
+        {/* Grid Layout - Updated: Removed VerifyStatus since it's now on a separate page */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Column */}
           <div className="space-y-6">
             <IssueCredential />
-            <VerifyStatus />
+            {/* Note: VerifyStatus has been moved to /verify page */}
           </div>
 
           {/* Right Column */}
           <div className="space-y-6">
             <AIVerificationForm />
-            <RoleResources />
-
-            {/* Info Card */}
-            <div className="bg-white p-6 rounded-xl shadow-md">
-              <h3 className="text-lg font-bold mb-3 flex items-center">
-                <span className="mr-2">📚</span>
-                About This System
-              </h3>
-              <div className="space-y-2 text-sm text-gray-700">
-                <p>
-                  <strong>Decentralized:</strong> Credentials are stored on the Casper blockchain, not in a central
-                  database.
-                </p>
-                <p>
-                  <strong>Tamper-Proof:</strong> Once issued, credentials cannot be altered without blockchain
-                  consensus.
-                </p>
-                <p>
-                  <strong>Self-Sovereign:</strong> You control your own credentials through your wallet's private key.
-                </p>
-                <p>
-                  <strong>Smart Contract Verified:</strong> Access is granted automatically by verifying on-chain
-                  credentials.
-                </p>
-              </div>
-
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <p className="text-xs text-gray-600">
-                  <strong>Network:</strong> Casper Testnet
-                  <br />
-                  <strong>Gas Required:</strong> ~10 CSPR per credential
-                  <br />
-                  <strong>Confirmation Time:</strong> 1-2 minutes
-                </p>
-              </div>
-            </div>
           </div>
+        </div>
+
+        <div className="mt-5">
+          <RoleResources />
         </div>
 
         {/* Footer Info */}
         <div className="mt-8 text-center text-sm text-gray-600">
           <p>
-            Built on <strong>Casper Network</strong> • Secured by blockchain technology
+            Built on <strong>Casper Network</strong> • Secured by blockchain
+            technology
           </p>
-          <p className="mt-2">Need help? Check the browser console (F12) for detailed logs</p>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="mt-12 py-6 bg-white border-t border-gray-200">
+      <footer className="py-3 bg-white border-t border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
           <p>⚠️ Testnet Only - Do not use with real value</p>
           <p className="mt-1">
-            Contract: <code className="text-xs bg-gray-100 px-2 py-1 rounded">hash-73c27...ab8fa</code>
+            Contract:{" "}
+            <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+              hash-afd7ca51f8ab1d415b7abf2439074924bd486ad12f0babfdf539e891ef6c4a1a
+            </code>
           </p>
-          {/* Simple admin link in footer too */}
-          <p className="mt-2">
-            <Link href="/admin" className="text-gray-700 hover:text-gray-900 font-medium">
+
+          <div className="mt-2 flex justify-center space-x-4">
+            <Link
+              href="/verify"
+              className="text-green-600 hover:text-green-800 font-medium"
+            >
+              Verify Credential →
+            </Link>
+            <Link
+              href="/admin"
+              className="text-gray-700 hover:text-gray-900 font-medium"
+            >
               Go to Admin Panel →
             </Link>
-          </p>
+          </div>
         </div>
       </footer>
     </div>
-  )
+  );
 }

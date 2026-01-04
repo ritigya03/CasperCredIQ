@@ -1,7 +1,6 @@
-// lib/casper.ts - Fixed for casper-js-sdk v2.15.7
 'use client';
 
-import { CasperClient, CLPublicKey, CLValueParsers, CasperServiceByJsonRPC, RuntimeArgs } from 'casper-js-sdk';
+import { CLPublicKey } from 'casper-js-sdk';
 import { CASPER_CONFIG } from '@/utils/constants';
 
 // Get API URL from environment variable
@@ -27,25 +26,57 @@ export async function submitSignedDeploy(signedDeployJson: any): Promise<string>
 }
 
 /**
- * Casper Service - Read contract state
+ * Make JSON-RPC call through backend proxy (solves CORS)
+ */
+async function rpcCall(method: string, params: any = {}): Promise<any> {
+  console.log('Making RPC call:', { method, params, apiUrl: API_URL });
+  
+  const response = await fetch(`${API_URL}/rpc`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method,
+      params
+    })
+  });
+
+  const data = await response.json();
+  
+  console.log('RPC response:', { method, data });
+  console.log('RPC result structure:', {
+    hasResult: !!data.result,
+    hasError: !!data.error,
+    errorMessage: data.error?.message,
+    errorCode: data.error?.code,
+    resultKeys: data.result ? Object.keys(data.result) : [],
+    result: data.result
+  });
+  
+  if (data.error) {
+    console.error('RPC returned error:', data.error);
+    throw new Error(data.error.message || 'RPC call failed');
+  }
+  
+  return data.result;
+}
+
+/**
+ * Casper Service - Read contract state via backend RPC proxy
  */
 class CasperService {
-  private client: CasperClient;
-  private nodeClient: CasperServiceByJsonRPC;
   private contractHash: string;
 
   constructor() {
-    // Initialize CasperClient with node URL
-    this.client = new CasperClient(CASPER_CONFIG.NODE_URL);
-    
-    // Also initialize the low-level node client
-    this.nodeClient = new CasperServiceByJsonRPC(CASPER_CONFIG.NODE_URL);
+    // Note: We don't use CasperClient or CasperServiceByJsonRPC directly
+    // Instead, we proxy all RPC calls through our backend to avoid CORS
     
     // Clean contract hash (remove 'hash-' prefix if present)
     this.contractHash = this.cleanContractHash(CASPER_CONFIG.CONTRACT_HASH);
     
-    console.log('CasperService initialized:', {
-      nodeUrl: CASPER_CONFIG.NODE_URL,
+    console.log('CasperService initialized (using backend RPC proxy):', {
+      apiUrl: API_URL,
       originalContractHash: CASPER_CONFIG.CONTRACT_HASH,
       cleanedContractHash: this.contractHash,
       chainName: CASPER_CONFIG.CHAIN_NAME
@@ -67,254 +98,337 @@ class CasperService {
   }
 
   /**
-   * Query contract entrypoint (read-only)
-   * Note: For role queries, use getUserRole() instead
+   * Get contract's state root hash
    */
-  async queryContract(params: {
-    contractHash?: string;
-    entrypoint: string;
-    args?: RuntimeArgs;
-  }): Promise<{ success: boolean; data?: any; error?: string }> {
+  async getStateRootHash(): Promise<string> {
     try {
-      const contractHash = params.contractHash 
-        ? this.cleanContractHash(params.contractHash)
-        : this.contractHash;
+      // Use chain_get_state_root_hash RPC method through our proxy
+      const result = await rpcCall('chain_get_state_root_hash');
+      
+      // The result might be directly the hash or in state_root_hash field
+      const stateRootHash = result.state_root_hash || result;
+      
+      if (!stateRootHash) {
+        throw new Error('Failed to get state root hash from RPC response');
+      }
+      
+      console.log('State root hash:', stateRootHash);
+      return stateRootHash;
+    } catch (error: any) {
+      console.error('Error getting state root hash:', {
+        message: error.message,
+        apiUrl: API_URL
+      });
+      throw new Error(`Failed to get state root hash: ${error.message}`);
+    }
+  }
 
-      console.log('Querying contract:', {
-        contractHash,
-        entrypoint: params.entrypoint,
-        args: params.args
+  /**
+   * Query contract dictionary directly (Odra format)
+   */
+  async queryDictionary(dictionaryName: string, key: string): Promise<any> {
+    try {
+      const stateRootHash = await this.getStateRootHash();
+      
+      console.log('Querying dictionary:', {
+        dictionaryName,
+        key,
+        contractHash: this.contractHash,
+        stateRootHash
+      });
+      
+      // First, get the contract to find the state URef
+      const contractResult = await rpcCall('state_get_item', {
+        state_root_hash: stateRootHash,
+        key: `hash-${this.contractHash}`,
+        path: []
+      });
+      
+      console.log('Contract state:', {
+        hasContract: !!contractResult,
+        contractKeys: contractResult ? Object.keys(contractResult) : []
+      });
+      
+      // Log the stored_value structure
+      if (contractResult.stored_value) {
+        console.log('stored_value keys:', Object.keys(contractResult.stored_value));
+        if (contractResult.stored_value.Contract) {
+          console.log('Contract keys:', Object.keys(contractResult.stored_value.Contract));
+        }
+      }
+      
+      // The contract is in stored_value.Contract
+      const contract = contractResult.stored_value?.Contract || contractResult.Contract;
+      
+      if (!contract) {
+        console.error('Contract not found in result:', contractResult);
+        throw new Error('Contract not found');
+      }
+      
+      console.log('Contract object keys:', Object.keys(contract));
+      console.log('Has named_keys?', 'named_keys' in contract);
+      
+      const namedKeys = contract.named_keys || [];
+      
+      console.log('Named keys count:', namedKeys.length);
+      console.log('All named keys:', namedKeys.map((nk: any) => ({ 
+        name: nk.name, 
+        keyType: nk.key.substring(0, 10) + '...' 
+      })));
+      
+      if (namedKeys.length === 0) {
+        console.error('No named keys found in contract');
+        return null;
+      }
+      
+      console.log('Looking for Odra state URef');
+      
+      // Odra stores all data under 'state' URef
+      const stateEntry = namedKeys.find((nk: any) => nk.name === 'state');
+      
+      if (!stateEntry) {
+        console.error('❌ State URef not found');
+        console.log('Available named keys:', namedKeys.map((nk: any) => nk.name).join(', '));
+        return null;
+      }
+      
+      console.log('✅ Found Odra state URef:', stateEntry.key);
+      
+      // For Odra, we query using the state URef as seed_uref
+      // The key should be: "credentials_" + account_hash
+      const dictionaryItemKey = `${dictionaryName}_${key}`;
+      
+      console.log('Querying Odra dictionary:', {
+        seedUref: stateEntry.key,
+        dictionaryItemKey: dictionaryItemKey
+      });
+      
+      // Query using Odra's dictionary format
+      const result = await rpcCall('state_get_dictionary_item', {
+        state_root_hash: stateRootHash,
+        dictionary_identifier: {
+          URef: {
+            seed_uref: stateEntry.key,
+            dictionary_item_key: dictionaryItemKey
+          }
+        }
+      });
+      
+      console.log('Dictionary query result:', result);
+      
+      if (!result) {
+        console.log('Result is null or undefined');
+        return null;
+      }
+      
+      console.log('Result keys:', Object.keys(result));
+      
+      // The result should have stored_value.CLValue structure
+      if (result.stored_value && result.stored_value.CLValue) {
+        console.log('Found stored_value.CLValue:', result.stored_value.CLValue);
+        return result.stored_value;
+      } else if (result.CLValue) {
+        console.log('Found CLValue directly:', result.CLValue);
+        return result;
+      } else {
+        console.log('No CLValue found in result:', result);
+        return null;
+      }
+    } catch (error: any) {
+      console.error('Error querying dictionary:', {
+        dictionaryName,
+        key,
+        message: error.message
+      });
+      
+      // Check if it's a "not found" error
+      if (error.message?.includes('ValueNotFound') || 
+          error.message?.includes('not found')) {
+        // Return null for not found instead of throwing
+        return null;
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's credential from contract
+   */
+  async getUserCredential(publicKeyHex: string): Promise<{
+    role: string | null;
+    isValid: boolean | any;
+    isRevoked: boolean;
+    issuedAt: Date | null;
+    expiresAt: Date | null;
+    issuer: string | null;
+    exists: boolean;
+  }> {
+    try {
+      const accountHash = this.getAccountHash(publicKeyHex);
+      
+      console.log('Getting user credential:', {
+        publicKeyHex,
+        accountHash
+      });
+      
+      const result = await this.queryDictionary('credentials', accountHash);
+
+      console.log('Credential query result:', {
+        hasResult: !!result,
+        resultType: typeof result,
+        resultKeys: result ? Object.keys(result) : [],
+        hasCLValue: !!(result && result.CLValue),
+        fullResult: result
       });
 
-      const stateRootHash = await this.nodeClient.getStateRootHash();
-      
-      // Get the contract's state
-      const contractData = await this.nodeClient.getBlockState(
-        stateRootHash,
-        `hash-${contractHash}`,
-        []
-      );
+      if (!result || !result.CLValue) {
+        console.log('No credential found - returning empty');
+        return {
+          role: null,
+          isValid: false,
+          isRevoked: false,
+          issuedAt: null,
+          expiresAt: null,
+          issuer: null,
+          exists: false
+        };
+      }
 
-      console.log('Contract data:', contractData);
+      // Decode the credential bytes
+      const bytes = result.CLValue.bytes;
+      const credential = await this.decodeCredentialFromBytes(bytes);
 
-      // For specific queries, use dedicated methods like getUserRole()
-      // This method returns raw contract data
-      return { success: true, data: contractData };
+      const now = Date.now();
+      const isValid = !credential.revoked && credential.expiresAt && credential.expiresAt.getTime() > now;
 
+      return {
+        role: credential.role,
+        isValid: isValid,
+        isRevoked: credential.revoked,
+        issuedAt: credential.issuedAt,
+        expiresAt: credential.expiresAt,
+        issuer: credential.issuer,
+        exists: true
+      };
     } catch (err: any) {
-      console.error('Contract query error:', {
+      console.error('Error getting user credential:', {
         message: err.message,
         code: err.code,
         data: err.data
       });
-      return { 
-        success: false, 
-        error: err.message || 'Failed to query contract' 
+      
+      // Return empty credential for not found
+      if (err.code === -32003 || err.message?.includes('not found')) {
+        return {
+          role: null,
+          isValid: false,
+          isRevoked: false,
+          issuedAt: null,
+          expiresAt: null,
+          issuer: null,
+          exists: false
+        };
+      }
+      
+      throw err;
+    }
+  }
+
+  /**
+   * Decode credential bytes into structured data
+   */
+  private async decodeCredentialFromBytes(hexBytes: string): Promise<{
+    role: string;
+    issuedAt: Date | null;
+    expiresAt: Date | null;
+    revoked: boolean;
+    issuer: string | null;
+  }> {
+    try {
+      const data = Buffer.from(hexBytes, 'hex');
+      
+      console.log('Decoding credential bytes:', {
+        hexBytes,
+        byteLength: data.length
+      });
+      
+      let offset = 0;
+      
+      // Decode role (length-prefixed string)
+      const roleLen = data.readUInt32LE(offset);
+      offset += 4;
+      const role = data.slice(offset, offset + roleLen).toString('utf-8');
+      offset += roleLen;
+      
+      // Decode issued_at (u64 timestamp in milliseconds)
+      const issuedAtLow = data.readUInt32LE(offset);
+      const issuedAtHigh = data.readUInt32LE(offset + 4);
+      const issuedAtMs = issuedAtLow + (issuedAtHigh * 0x100000000);
+      const issuedAt = new Date(issuedAtMs);
+      offset += 8;
+      
+      // Decode expires_at (u64 timestamp in milliseconds)
+      const expiresAtLow = data.readUInt32LE(offset);
+      const expiresAtHigh = data.readUInt32LE(offset + 4);
+      const expiresAtMs = expiresAtLow + (expiresAtHigh * 0x100000000);
+      const expiresAt = new Date(expiresAtMs);
+      offset += 8;
+      
+      // Decode revoked (bool)
+      const revoked = data[offset] !== 0;
+      offset += 1;
+      
+      // Decode issuer (33-byte Address - first byte is tag, next 32 bytes are account hash)
+      const issuerTag = data[offset];
+      offset += 1;
+      const issuerHash = data.slice(offset, offset + 32);
+      const issuer = 'account-hash-' + issuerHash.toString('hex');
+      
+      console.log('Decoded credential:', {
+        role,
+        issuedAt: issuedAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        revoked,
+        issuer
+      });
+      
+      return {
+        role,
+        issuedAt,
+        expiresAt,
+        revoked,
+        issuer
       };
+    } catch (error) {
+      console.error('Error decoding credential bytes:', error);
+      throw new Error('Failed to decode credential data');
+    }
+  }
+
+  /**
+   * Check if user's credential is valid (not expired and not revoked)
+   */
+  async isCredentialValid(publicKeyHex: string): Promise<boolean> {
+    try {
+      const credential = await this.getUserCredential(publicKeyHex);
+      return credential.isValid;
+    } catch (err: any) {
+      console.error('Error checking validity:', err);
+      return false;
     }
   }
 
   /**
    * Get user's role from contract
    */
-  async getUserRole(userAddress: string): Promise<string | null> {
+  async getUserRole(publicKeyHex: string): Promise<string | null> {
     try {
-      const stateRootHash = await this.nodeClient.getStateRootHash();
-      const accountHash = this.getAccountHash(userAddress);
-      
-      console.log('Querying user role:', {
-        stateRootHash,
-        contractHash: this.contractHash,
-        accountHash,
-        dictionaryName: 'credentials'
-      });
-      
-      const result = await this.nodeClient.getDictionaryItemByName(
-        stateRootHash,
-        this.contractHash,
-        'credentials',
-        accountHash
-      );
-
-      console.log('Role query result:', result);
-
-      // In SDK v2.15.7, result structure is different
-      if (result && result.CLValue) {
-        try {
-          const parsed = CLValueParsers.fromJSON(result.CLValue);
-          const credentialData = parsed.val as any;
-          
-          // Extract role from credential struct
-          if (credentialData && typeof credentialData === 'object') {
-            if ('role' in credentialData) {
-              return credentialData.role as string;
-            } else if (Array.isArray(credentialData) && credentialData[0]) {
-              return credentialData[0] as string;
-            }
-          }
-          
-          return credentialData?.toString() || null;
-        } catch (parseErr) {
-          console.error('Error parsing CLValue:', parseErr);
-          
-          // Try alternate parsing method
-          const clValueAny = result.CLValue as any;
-          if (clValueAny.parsed) {
-            const parsed = clValueAny.parsed;
-            if (typeof parsed === 'object' && 'role' in parsed) {
-              return parsed.role as string;
-            }
-            return parsed.toString();
-          }
-        }
-      }
-
+      const credential = await this.getUserCredential(publicKeyHex);
+      return credential.role;
+    } catch (err: any) {
+      console.error('Error reading role:', err);
       return null;
-    } catch (err: any) {
-      console.error('Error reading role:', {
-        message: err.message,
-        code: err.code,
-        data: err.data
-      });
-      return null;
-    }
-  }
-
-  /**
-   * Check if user's credential is valid (not expired)
-   */
-  async isCredentialValid(userAddress: string): Promise<boolean> {
-    try {
-      const stateRootHash = await this.nodeClient.getStateRootHash();
-      const accountHash = this.getAccountHash(userAddress);
-      
-      console.log('Querying credential validity:', {
-        stateRootHash,
-        contractHash: this.contractHash,
-        accountHash
-      });
-      
-      const result = await this.nodeClient.getDictionaryItemByName(
-        stateRootHash,
-        this.contractHash,
-        'credentials',
-        accountHash
-      );
-
-      console.log('Validity query result:', result);
-
-      if (result && result.CLValue) {
-        try {
-          const parsed = CLValueParsers.fromJSON(result.CLValue);
-          const credentialData = parsed.val as any;
-          
-          // Extract expires_at and revoked from credential
-          let expiresAt: number = 0;
-          let revoked: boolean = false;
-          
-          if (credentialData && typeof credentialData === 'object') {
-            if ('expires_at' in credentialData) {
-              expiresAt = Number(credentialData.expires_at);
-            }
-            if ('revoked' in credentialData) {
-              revoked = Boolean(credentialData.revoked);
-            }
-          } else if (Array.isArray(credentialData)) {
-            // [role, issued_at, expires_at, revoked]
-            expiresAt = Number(credentialData[2]);
-            revoked = Boolean(credentialData[3]);
-          }
-          
-          const now = Math.floor(Date.now() / 1000);
-          
-          console.log('Validity check:', {
-            expiresAt,
-            revoked,
-            now,
-            isValid: !revoked && expiresAt > now
-          });
-          
-          return !revoked && expiresAt > now;
-        } catch (parseErr) {
-          console.error('Error parsing validity CLValue:', parseErr);
-          return false;
-        }
-      }
-
-      return false;
-    } catch (err: any) {
-      console.error('Error checking validity:', {
-        message: err.message,
-        code: err.code,
-        data: err.data
-      });
-      return false;
-    }
-  }
-
-  /**
-   * Get user's credential details
-   */
-  async getUserCredential(userAddress: string): Promise<{
-    role: string | null;
-    isValid: boolean;
-    expiryDate: Date | null;
-  }> {
-    try {
-      const stateRootHash = await this.nodeClient.getStateRootHash();
-      const accountHash = this.getAccountHash(userAddress);
-      
-      const result = await this.nodeClient.getDictionaryItemByName(
-        stateRootHash,
-        this.contractHash,
-        'credentials',
-        accountHash
-      );
-
-      if (result && result.CLValue) {
-        try {
-          const parsed = CLValueParsers.fromJSON(result.CLValue);
-          const credentialData = parsed.val as any;
-          
-          let role: string | null = null;
-          let expiresAt: number = 0;
-          let revoked: boolean = false;
-          
-          if (credentialData && typeof credentialData === 'object') {
-            if ('role' in credentialData) role = credentialData.role as string;
-            if ('expires_at' in credentialData) expiresAt = Number(credentialData.expires_at);
-            if ('revoked' in credentialData) revoked = Boolean(credentialData.revoked);
-          } else if (Array.isArray(credentialData)) {
-            role = credentialData[0] as string;
-            expiresAt = Number(credentialData[2]);
-            revoked = Boolean(credentialData[3]);
-          }
-          
-          const now = Math.floor(Date.now() / 1000);
-          const isValid = !revoked && expiresAt > now;
-          const expiryDate = expiresAt ? new Date(expiresAt * 1000) : null;
-
-          console.log('User credential result:', {
-            userAddress,
-            role,
-            isValid,
-            expiryDate
-          });
-
-          return { role, isValid, expiryDate };
-        } catch (parseErr) {
-          console.error('Error parsing credential:', parseErr);
-        }
-      }
-
-      return { role: null, isValid: false, expiryDate: null };
-    } catch (err: any) {
-      console.error('Error getting credential:', {
-        message: err.message,
-        code: err.code,
-        data: err.data
-      });
-      return { role: null, isValid: false, expiryDate: null };
     }
   }
 
@@ -330,12 +444,9 @@ class CasperService {
         return cleanKey.replace('account-hash-', '');
       }
       
-      if (cleanKey.startsWith('01')) {
-        cleanKey = cleanKey.slice(2);
-      }
-      
-      if (cleanKey.startsWith('02')) {
-        cleanKey = cleanKey.slice(2);
+      // Remove algorithm prefix if present (01 or 02)
+      if (cleanKey.startsWith('01') || cleanKey.startsWith('02')) {
+        // Keep the prefix for CLPublicKey parsing
       }
       
       const pk = CLPublicKey.fromHex(publicKeyHex);
@@ -350,7 +461,7 @@ class CasperService {
       return accountHash;
     } catch (error) {
       console.error('Error converting to account hash:', error);
-      return publicKeyHex;
+      throw new Error(`Failed to convert public key to account hash: ${publicKeyHex}`);
     }
   }
 
@@ -359,81 +470,43 @@ class CasperService {
    */
   async getBalance(publicKeyHex: string): Promise<bigint> {
     try {
-      const stateRootHash = await this.nodeClient.getStateRootHash();
+      const stateRootHash = await this.getStateRootHash();
       const pk = CLPublicKey.fromHex(publicKeyHex);
       const balanceUref = pk.toAccountHashStr();
-      const balanceResult = await this.nodeClient.getAccountBalance(stateRootHash, balanceUref);
-      // Convert BigNumber to bigint
-      const balance = BigInt(balanceResult.toString());
+      
+      // Use account_getAccountBalance RPC method
+      const result = await rpcCall('state_get_balance', {
+        state_root_hash: stateRootHash,
+        purse_uref: balanceUref
+      });
+      
+      const balance = BigInt(result.balance_value);
       console.log('Balance query:', { publicKeyHex, balance: balance.toString() });
       return balance;
     } catch (error: any) {
-      console.error('Error getting balance:', {
-        message: error.message,
-        code: error.code,
-        data: error.data
-      });
+      console.error('Error getting balance:', error.message);
       return BigInt(0);
     }
   }
 
   /**
-   * Get contract's state root hash
-   */
-  async getStateRootHash(): Promise<string> {
-    try {
-      const hash = await this.nodeClient.getStateRootHash();
-      console.log('State root hash:', hash);
-      return hash;
-    } catch (error: any) {
-      console.error('Error getting state root hash:', {
-        message: error.message,
-        code: error.code,
-        data: error.data
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Query contract dictionary directly
-   */
-  async queryDictionary(dictionaryName: string, key: string): Promise<any> {
-    try {
-      const stateRootHash = await this.getStateRootHash();
-      const result = await this.nodeClient.getDictionaryItemByName(
-        stateRootHash,
-        this.contractHash,
-        dictionaryName,
-        key
-      );
-      console.log('Dictionary query result:', { dictionaryName, key, result });
-      return result;
-    } catch (error: any) {
-      console.error('Error querying dictionary:', {
-        dictionaryName,
-        key,
-        message: error.message,
-        code: error.code,
-        data: error.data
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Test connection to node
+   * Test connection to backend RPC proxy
    */
   async testConnection(): Promise<{ success: boolean; version?: string; error?: string }> {
     try {
-      const status = await this.nodeClient.getStatus();
-      console.log('Node connection successful:', status);
-      return { success: true, version: status.api_version };
+      // Test by getting state root hash
+      const stateRootHash = await this.getStateRootHash();
+      console.log('Backend RPC proxy connection successful');
+      
+      return { 
+        success: true, 
+        version: stateRootHash.slice(0, 16) + '...'
+      };
     } catch (error: any) {
-      console.error('Node connection failed:', error);
+      console.error('Backend RPC proxy connection failed:', error.message);
       return { 
         success: false, 
-        error: error.message || 'Failed to connect to node' 
+        error: error.message || 'Failed to connect to backend RPC proxy' 
       };
     }
   }
@@ -443,12 +516,71 @@ class CasperService {
    */
   async getDeployStatus(deployHash: string): Promise<any> {
     try {
-      const deployInfo = await this.nodeClient.getDeployInfo(deployHash);
+      const deployInfo = await rpcCall('info_get_deploy', {
+        deploy_hash: deployHash
+      });
       console.log('Deploy status:', { deployHash, deployInfo });
       return deployInfo;
     } catch (error: any) {
       console.error('Error getting deploy status:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Check if an address is an authorized issuer
+   */
+  async isIssuer(publicKeyHex: string): Promise<boolean> {
+    try {
+      const accountHash = this.getAccountHash(publicKeyHex);
+      
+      console.log('Checking issuer status:', {
+        publicKeyHex,
+        accountHash
+      });
+      
+      const result = await this.queryDictionary('issuers', accountHash);
+
+      if (!result || !result.CLValue) {
+        return false;
+      }
+
+      // Parse boolean value from the CLValue bytes
+      const bytes = Buffer.from(result.CLValue.bytes, 'hex');
+      return bytes[0] !== 0;
+    } catch (err: any) {
+      console.error('Error checking issuer status:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Get contract owner
+   */
+  async getOwner(): Promise<string | null> {
+    try {
+      const stateRootHash = await this.getStateRootHash();
+      
+      const result = await rpcCall('state_get_item', {
+        state_root_hash: stateRootHash,
+        key: `hash-${this.contractHash}`,
+        path: ['owner']
+      });
+
+      console.log('Owner query result:', result);
+
+      if (result && result.CLValue) {
+        // Parse the owner address from bytes
+        const bytes = Buffer.from(result.CLValue.bytes, 'hex');
+        const ownerTag = bytes[0];
+        const ownerHash = bytes.slice(1, 33);
+        return 'account-hash-' + ownerHash.toString('hex');
+      }
+
+      return null;
+    } catch (err: any) {
+      console.error('Error getting owner:', err);
+      return null;
     }
   }
 }

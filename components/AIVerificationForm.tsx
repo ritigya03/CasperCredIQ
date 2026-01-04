@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import axios from 'axios';
+import { Upload, X, FileText, AlertCircle } from 'lucide-react';
 
 interface VerificationFormData {
   name: string;
@@ -22,30 +21,187 @@ interface VerificationResult {
   explanation: string;
 }
 
+interface UploadedFile {
+  name: string;
+  size: number;
+  type: string;
+  content: string;
+}
+
 export default function AIVerificationForm() {
-  const { register, handleSubmit, formState: { errors } } = useForm<VerificationFormData>();
+  const [formData, setFormData] = useState<VerificationFormData>({
+    name: '',
+    gender: '',
+    age: '',
+    role: '',
+    organization: '',
+    justification: '',
+    supportingDocuments: '',
+    email: '',
+    phone: '',
+    duration: ''
+  });
+  
+  const [errors, setErrors] = useState<Partial<Record<keyof VerificationFormData, string>>>({});
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [step, setStep] = useState<'form' | 'review' | 'result'>('form');
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
-  const onSubmit = async (data: VerificationFormData) => {
+  const validateForm = (): boolean => {
+    const newErrors: Partial<Record<keyof VerificationFormData, string>> = {};
+    
+    if (!formData.name.trim()) newErrors.name = 'Name is required';
+    if (!formData.gender) newErrors.gender = 'Gender is required';
+    if (!formData.age) {
+      newErrors.age = 'Age is required';
+    } else if (parseInt(formData.age) < 18) {
+      newErrors.age = 'Must be at least 18 years old';
+    }
+    if (!formData.email.match(/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i)) {
+      newErrors.email = 'Enter a valid email address';
+    }
+    if (!formData.phone.match(/^[+]?[\d\s-]+$/)) {
+      newErrors.phone = 'Enter a valid phone number';
+    }
+    if (!formData.role) newErrors.role = 'Role is required';
+    if (!formData.organization || formData.organization.length < 2) {
+      newErrors.organization = 'Valid organization name is required';
+    }
+    if (!formData.duration) newErrors.duration = 'Duration is required';
+    if (formData.justification.length < 50) {
+      newErrors.justification = 'Please provide more details (minimum 50 characters)';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name as keyof VerificationFormData]) {
+      setErrors(prev => ({ ...prev, [name]: undefined }));
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newFiles: UploadedFile[] = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`File ${file.name} is too large. Maximum size is 5MB.`);
+        continue;
+      }
+
+      try {
+        const content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            if (event.target?.result) {
+              resolve(event.target.result as string);
+            } else {
+              reject(new Error('Failed to read file'));
+            }
+          };
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          
+          // Read as data URL for images, text for documents
+          if (file.type.startsWith('image/')) {
+            reader.readAsDataURL(file);
+          } else {
+            reader.readAsText(file);
+          }
+        });
+
+        newFiles.push({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          content: content
+        });
+      } catch (error) {
+        console.error(`Error reading file ${file.name}:`, error);
+        alert(`Failed to read file ${file.name}`);
+      }
+    }
+
+    setUploadedFiles(prev => [...prev, ...newFiles]);
+    
+    // Update supporting documents field
+    const fileList = [...uploadedFiles, ...newFiles].map(f => f.name).join(', ');
+    setFormData(prev => ({ 
+      ...prev, 
+      supportingDocuments: fileList 
+    }));
+  };
+
+  const removeFile = (index: number) => {
+    const newFiles = uploadedFiles.filter((_, i) => i !== index);
+    setUploadedFiles(newFiles);
+    
+    const fileList = newFiles.map(f => f.name).join(', ');
+    setFormData(prev => ({ 
+      ...prev, 
+      supportingDocuments: fileList 
+    }));
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const onSubmit = async () => {
     setLoading(true);
     try {
-      // Prepare data for AI verification
       const aiPayload = {
-        role: data.role,
-        organization: data.organization,
-        justification: data.justification
+        name: formData.name,
+        age: formData.age,
+        gender: formData.gender,
+        role: formData.role,
+        organization: formData.organization,
+        justification: formData.justification,
+        duration: formData.duration,
+        email: formData.email,
+        phone: formData.phone,
+        supportingDocuments: formData.supportingDocuments,
+        hasFiles: uploadedFiles.length > 0
       };
 
-      const response = await axios.post('http://localhost:4000/ai-verify', aiPayload);
-      setResult(response.data);
+      const response = await fetch('http://localhost:4000/ai-verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(aiPayload)
+      });
+
+      if (!response.ok) {
+        throw new Error('Verification request failed');
+      }
+
+      const data = await response.json();
+      setResult(data);
       setStep('result');
     } catch (error) {
       console.error('Verification failed:', error);
-      alert('Verification failed. Please try again.');
+      alert('Verification failed. Please ensure the backend server is running on http://localhost:4000');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReview = () => {
+    if (validateForm()) {
+      setStep('review');
     }
   };
 
@@ -56,13 +212,6 @@ export default function AIVerificationForm() {
     } else if (step === 'review') {
       setStep('form');
     }
-  };
-
-  // Form review before submission
-  const handleReview = (data: VerificationFormData) => {
-    // Store form data
-    sessionStorage.setItem('verificationData', JSON.stringify(data));
-    setStep('review');
   };
 
   const renderConfidenceBar = (confidence: number) => {
@@ -89,8 +238,6 @@ export default function AIVerificationForm() {
   };
 
   if (step === 'review') {
-    const data = JSON.parse(sessionStorage.getItem('verificationData') || '{}');
-    
     return (
       <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-md">
         <h2 className="text-2xl font-bold mb-6 text-gray-800">Review Your Application</h2>
@@ -99,37 +246,47 @@ export default function AIVerificationForm() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <h3 className="font-semibold text-gray-600">Personal Details</h3>
-              <p className="text-gray-800">{data.name}</p>
-              <p className="text-gray-800">{data.age} years old</p>
-              <p className="text-gray-800">{data.gender}</p>
+              <p className="text-gray-800">{formData.name}</p>
+              <p className="text-gray-800">{formData.age} years old</p>
+              <p className="text-gray-800 capitalize">{formData.gender}</p>
             </div>
             <div>
               <h3 className="font-semibold text-gray-600">Contact</h3>
-              <p className="text-gray-800">{data.email}</p>
-              <p className="text-gray-800">{data.phone}</p>
+              <p className="text-gray-800">{formData.email}</p>
+              <p className="text-gray-800">{formData.phone}</p>
             </div>
           </div>
           
           <div>
             <h3 className="font-semibold text-gray-600">Role Request</h3>
             <div className="bg-gray-50 p-3 rounded">
-              <p className="text-gray-800"><strong>Role:</strong> {data.role}</p>
-              <p className="text-gray-800"><strong>Organization:</strong> {data.organization}</p>
-              <p className="text-gray-800"><strong>Duration:</strong> {data.duration}</p>
+              <p className="text-gray-800"><strong>Role:</strong> {formData.role}</p>
+              <p className="text-gray-800"><strong>Organization:</strong> {formData.organization}</p>
+              <p className="text-gray-800"><strong>Duration:</strong> {formData.duration}</p>
             </div>
           </div>
           
           <div>
             <h3 className="font-semibold text-gray-600">Justification</h3>
             <div className="bg-gray-50 p-3 rounded">
-              <p className="text-gray-800 whitespace-pre-wrap">{data.justification}</p>
+              <p className="text-gray-800 whitespace-pre-wrap">{formData.justification}</p>
             </div>
           </div>
           
-          {data.supportingDocuments && (
+          {uploadedFiles.length > 0 && (
             <div>
-              <h3 className="font-semibold text-gray-600">Supporting Documents</h3>
-              <p className="text-gray-800">{data.supportingDocuments}</p>
+              <h3 className="font-semibold text-gray-600">Uploaded Files ({uploadedFiles.length})</h3>
+              <div className="bg-gray-50 p-3 rounded space-y-2">
+                {uploadedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-blue-600" />
+                      <span className="text-gray-800">{file.name}</span>
+                      <span className="text-gray-500">({formatFileSize(file.size)})</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -142,7 +299,7 @@ export default function AIVerificationForm() {
             Edit Information
           </button>
           <button
-            onClick={() => onSubmit(data)}
+            onClick={onSubmit}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex-1"
             disabled={loading}
           >
@@ -160,7 +317,7 @@ export default function AIVerificationForm() {
     return (
       <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-md">
         <div className="text-center mb-6">
-          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full bg-${statusColor}-100 mb-4`}>
+          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full ${result.recommended ? 'bg-green-100' : 'bg-red-100'} mb-4`}>
             {result.recommended ? (
               <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
@@ -191,7 +348,7 @@ export default function AIVerificationForm() {
           </div>
           <div className="p-3 bg-gray-50 rounded">
             <h4 className="font-semibold text-gray-700 mb-1">Risk Level</h4>
-            <p className={`text-lg font-bold capitalize ${result.risk_level === 'high' ? 'text-red-600' : result.risk_level === 'medium' ? 'text-yellow-600' : 'text-green-600'}`}>
+            <p className={`text-lg font-bold capitalize ${result.risk_level === 'high' || result.risk_level === 'critical' ? 'text-red-600' : result.risk_level === 'medium' ? 'text-yellow-600' : 'text-green-600'}`}>
               {result.risk_level}
             </p>
           </div>
@@ -221,7 +378,7 @@ export default function AIVerificationForm() {
         <p className="text-gray-600">Complete this form for AI-powered verification of your credential request</p>
       </div>
       
-      <form onSubmit={handleSubmit(handleReview)} className="space-y-6">
+      <div className="space-y-6">
         {/* Personal Information Section */}
         <div className="bg-gray-50 p-4 rounded-lg">
           <h2 className="text-xl font-semibold text-gray-700 mb-4">Personal Information</h2>
@@ -233,12 +390,14 @@ export default function AIVerificationForm() {
               </label>
               <input
                 type="text"
-                {...register('name', { required: 'Name is required' })}
+                name="name"
+                value={formData.name}
+                onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="John Doe"
               />
               {errors.name && (
-                <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+                <p className="mt-1 text-sm text-red-600">{errors.name}</p>
               )}
             </div>
             
@@ -247,7 +406,9 @@ export default function AIVerificationForm() {
                 Gender *
               </label>
               <select
-                {...register('gender', { required: 'Gender is required' })}
+                name="gender"
+                value={formData.gender}
+                onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select gender</option>
@@ -257,7 +418,7 @@ export default function AIVerificationForm() {
                 <option value="prefer-not-to-say">Prefer not to say</option>
               </select>
               {errors.gender && (
-                <p className="mt-1 text-sm text-red-600">{errors.gender.message}</p>
+                <p className="mt-1 text-sm text-red-600">{errors.gender}</p>
               )}
             </div>
           </div>
@@ -269,17 +430,16 @@ export default function AIVerificationForm() {
               </label>
               <input
                 type="number"
+                name="age"
                 min="18"
                 max="100"
-                {...register('age', { 
-                  required: 'Age is required',
-                  min: { value: 18, message: 'Must be at least 18 years old' }
-                })}
+                value={formData.age}
+                onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="25"
               />
               {errors.age && (
-                <p className="mt-1 text-sm text-red-600">{errors.age.message}</p>
+                <p className="mt-1 text-sm text-red-600">{errors.age}</p>
               )}
             </div>
             
@@ -289,18 +449,14 @@ export default function AIVerificationForm() {
               </label>
               <input
                 type="tel"
-                {...register('phone', { 
-                  required: 'Phone number is required',
-                  pattern: {
-                    value: /^[+]?[\d\s-]+$/,
-                    message: 'Enter a valid phone number'
-                  }
-                })}
+                name="phone"
+                value={formData.phone}
+                onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="+1 (555) 123-4567"
               />
               {errors.phone && (
-                <p className="mt-1 text-sm text-red-600">{errors.phone.message}</p>
+                <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
               )}
             </div>
           </div>
@@ -311,18 +467,14 @@ export default function AIVerificationForm() {
             </label>
             <input
               type="email"
-              {...register('email', { 
-                required: 'Email is required',
-                pattern: {
-                  value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                  message: 'Enter a valid email address'
-                }
-              })}
+              name="email"
+              value={formData.email}
+              onChange={handleInputChange}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="john@example.com"
             />
             {errors.email && (
-              <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
+              <p className="mt-1 text-sm text-red-600">{errors.email}</p>
             )}
           </div>
         </div>
@@ -337,7 +489,9 @@ export default function AIVerificationForm() {
                 Requested Role *
               </label>
               <select
-                {...register('role', { required: 'Role is required' })}
+                name="role"
+                value={formData.role}
+                onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select a role</option>
@@ -351,7 +505,7 @@ export default function AIVerificationForm() {
                 <option value="other">Other</option>
               </select>
               {errors.role && (
-                <p className="mt-1 text-sm text-red-600">{errors.role.message}</p>
+                <p className="mt-1 text-sm text-red-600">{errors.role}</p>
               )}
             </div>
             
@@ -360,7 +514,9 @@ export default function AIVerificationForm() {
                 Duration Needed *
               </label>
               <select
-                {...register('duration', { required: 'Duration is required' })}
+                name="duration"
+                value={formData.duration}
+                onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select duration</option>
@@ -372,7 +528,7 @@ export default function AIVerificationForm() {
                 <option value="other">Other</option>
               </select>
               {errors.duration && (
-                <p className="mt-1 text-sm text-red-600">{errors.duration.message}</p>
+                <p className="mt-1 text-sm text-red-600">{errors.duration}</p>
               )}
             </div>
           </div>
@@ -383,15 +539,14 @@ export default function AIVerificationForm() {
             </label>
             <input
               type="text"
-              {...register('organization', { 
-                required: 'Organization is required',
-                minLength: { value: 2, message: 'Organization name is too short' }
-              })}
+              name="organization"
+              value={formData.organization}
+              onChange={handleInputChange}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g., Stanford University, Google Inc."
             />
             {errors.organization && (
-              <p className="mt-1 text-sm text-red-600">{errors.organization.message}</p>
+              <p className="mt-1 text-sm text-red-600">{errors.organization}</p>
             )}
             <p className="mt-1 text-sm text-gray-500">
               Please provide the full, official name of the organization
@@ -404,15 +559,14 @@ export default function AIVerificationForm() {
             </label>
             <textarea
               rows={4}
-              {...register('justification', { 
-                required: 'Justification is required',
-                minLength: { value: 50, message: 'Please provide more details (minimum 50 characters)' }
-              })}
+              name="justification"
+              value={formData.justification}
+              onChange={handleInputChange}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Explain in detail why you need this credential. Be specific about your responsibilities, tasks, and why this access is necessary for your work/studies."
             />
             {errors.justification && (
-              <p className="mt-1 text-sm text-red-600">{errors.justification.message}</p>
+              <p className="mt-1 text-sm text-red-600">{errors.justification}</p>
             )}
             <p className="mt-1 text-sm text-gray-500">
               Detailed justifications are more likely to be approved. Include specific tasks, projects, or responsibilities.
@@ -420,34 +574,82 @@ export default function AIVerificationForm() {
           </div>
           
           <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Supporting Documents (Optional)
             </label>
-            <textarea
-              rows={3}
-              {...register('supportingDocuments')}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="List any supporting documents you can provide (e.g., enrollment proof, employment letter, project description). You may be asked to submit these later."
-            />
+            
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-400 transition">
+              <input
+                type="file"
+                id="file-upload"
+                multiple
+                onChange={handleFileUpload}
+                className="hidden"
+                accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+              />
+              <label
+                htmlFor="file-upload"
+                className="cursor-pointer flex flex-col items-center"
+              >
+                <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                <span className="text-sm text-gray-600">
+                  Click to upload or drag and drop
+                </span>
+                <span className="text-xs text-gray-500 mt-1">
+                  PDF, DOC, TXT, JPG, PNG (Max 5MB per file)
+                </span>
+              </label>
+            </div>
+            
+            {uploadedFiles.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {uploadedFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between bg-blue-50 p-3 rounded"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-blue-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{file.name}</p>
+                        <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         
         {/* Important Notes */}
         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <h3 className="font-semibold text-blue-800 mb-2">Important Information</h3>
-          <ul className="text-sm text-blue-700 space-y-1">
-            <li>• All fields marked with * are required</li>
-            <li>• AI verification typically takes 10-30 seconds</li>
-            <li>• Provide specific, detailed justifications for better results</li>
-            <li>• Use professional language and avoid inappropriate content</li>
-            <li>• You'll have a chance to review before submission</li>
-          </ul>
+          <div className="flex gap-2">
+            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-blue-800 mb-2">Important Information</h3>
+              <ul className="text-sm text-blue-700 space-y-1">
+                <li>• All fields marked with * are required</li>
+                <li>• AI verification typically takes 10-30 seconds</li>
+                <li>• Provide specific, detailed justifications for better results</li>
+                <li>• Use professional language and avoid inappropriate content</li>
+                <li>• You'll have a chance to review before submission</li>
+              </ul>
+            </div>
+          </div>
         </div>
         
         {/* Submission */}
         <div className="flex justify-between items-center pt-4">
           <button
-            type="submit"
+            onClick={handleReview}
             className="px-6 py-3 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition"
           >
             Review Application
@@ -457,7 +659,7 @@ export default function AIVerificationForm() {
             Fields marked with * are required
           </p>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

@@ -77,28 +77,6 @@ export default function AdminPage() {
               </ul>
             </div>
 
-            {/* Stats Card */}
-            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 p-6 rounded-xl shadow-md border border-blue-100">
-              <h3 className="text-lg font-bold mb-4 text-blue-900">Quick Stats</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                  <div className="text-2xl font-bold text-blue-600">0</div>
-                  <div className="text-xs text-gray-600">Active Today</div>
-                </div>
-                <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                  <div className="text-2xl font-bold text-green-600">0</div>
-                  <div className="text-xs text-gray-600">Total Issued</div>
-                </div>
-                <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                  <div className="text-2xl font-bold text-red-600">0</div>
-                  <div className="text-xs text-gray-600">Revoked</div>
-                </div>
-                <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                  <div className="text-2xl font-bold text-purple-600">3</div>
-                  <div className="text-xs text-gray-600">Available Roles</div>
-                </div>
-              </div>
-            </div>
 
             {/* Warning Card */}
             <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">

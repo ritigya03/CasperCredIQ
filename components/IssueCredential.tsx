@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   CLPublicKey,
   RuntimeArgs,
@@ -8,11 +8,11 @@ import {
   DeployUtil,
   CLByteArray,
 } from 'casper-js-sdk';
-import { Copy, ExternalLink, CheckCircle, XCircle, User } from 'lucide-react';
+import { Copy, ExternalLink, CheckCircle, XCircle, User, Download } from 'lucide-react';
 
 import { walletManager } from '@/lib/wallet';
 import { submitSignedDeploy } from '@/lib/casper';
-import { CASPER_CONFIG } from '@/utils/constants';
+import { CASPER_CONFIG, ENTRY_POINTS, PARAM_NAMES } from '@/utils/constants';
 
 function createOdraAddress(publicKeyHex: string): CLByteArray {
   const pk = CLPublicKey.fromHex(publicKeyHex);
@@ -44,6 +44,8 @@ export default function IssueCredential() {
   const [deployHash, setDeployHash] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isValidPublicKey, setIsValidPublicKey] = useState<boolean | null>(null);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
+const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const unsubscribe = walletManager.subscribe((state) => {
@@ -70,6 +72,14 @@ export default function IssueCredential() {
       setIsValidPublicKey(false);
     }
   }, [recipientPublicKey]);
+  // Generate QR code when deployHash changes
+useEffect(() => {
+  if (deployHash && canvasRef.current) {
+    generateQRCode(deployHash);
+  } else {
+    setQrCodeDataUrl(null);
+  }
+}, [deployHash]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -154,22 +164,33 @@ export default function IssueCredential() {
       // Recipient receives the credential
       const recipientAddress = createOdraAddress(recipientPublicKey);
 
+      // ⚠️ CRITICAL: Convert days to MILLISECONDS, not seconds!
+      // This is the workaround for the contract bug where expires_at = now + ttl_seconds
+      // But 'now' is in milliseconds, so we pass milliseconds instead of seconds
+      const ttlMilliseconds = days * 24 * 60 * 60 * 1000;
+
       console.log('Issuing credential:', {
         issuer: freshState.publicKey,
         recipient: recipientPublicKey,
         role,
-        days
+        days,
+        ttlMilliseconds,
+        contractHash: CASPER_CONFIG.CONTRACT_HASH
       });
 
       const runtimeArgs = RuntimeArgs.fromMap({
-        user: recipientAddress,
-        role: CLValueBuilder.string(role),
-        ttl_seconds: CLValueBuilder.u64(days * 24 * 60 * 60),
+        [PARAM_NAMES.USER]: recipientAddress,
+        [PARAM_NAMES.ROLE]: CLValueBuilder.string(role),
+        [PARAM_NAMES.TTL_SECONDS]: CLValueBuilder.u64(ttlMilliseconds), // Now in milliseconds!
       });
 
+      // Clean contract hash (remove any prefixes)
       let contractHash = CASPER_CONFIG.CONTRACT_HASH;
       if (contractHash.startsWith('hash-')) {
         contractHash = contractHash.slice(5);
+      }
+      if (contractHash.startsWith('contract-')) {
+        contractHash = contractHash.slice(9);
       }
 
       const deployParams = new DeployUtil.DeployParams(
@@ -181,12 +202,12 @@ export default function IssueCredential() {
 
       const session = DeployUtil.ExecutableDeployItem.newStoredContractByHash(
         Uint8Array.from(Buffer.from(contractHash, 'hex')),
-        'mint',
+        ENTRY_POINTS.MINT, // Use constant instead of hardcoded string
         runtimeArgs
       );
 
       const payment = DeployUtil.standardPayment(
-        CASPER_CONFIG.PAYMENT_AMOUNTS.MINT || 5_000_000_000
+        CASPER_CONFIG.PAYMENT_AMOUNTS.MINT
       );
 
       const deploy = DeployUtil.makeDeploy(deployParams, session, payment);
@@ -211,7 +232,8 @@ export default function IssueCredential() {
 
       setMessage({
         type: 'success',
-        text: `✅ Credential issued successfully to ${recipientPublicKey.slice(0, 8)}...${recipientPublicKey.slice(-6)}!`
+        text: `✅ Credential issued successfully!`,
+        details: `Recipient: ${recipientPublicKey.slice(0, 8)}...${recipientPublicKey.slice(-6)} | Role: ${role} | Valid for ${days} days`
       });
 
       // Clear form
@@ -236,6 +258,12 @@ export default function IssueCredential() {
       } else if (e.message.includes('Invalid') || e.message.includes('public key')) {
         errorText = 'Invalid public key';
         errorDetails = 'Please enter a valid Casper public key (starting with 01 or 02).';
+      } else if (e.message.includes('NotAuthorized')) {
+        errorText = 'Not authorized to issue credentials';
+        errorDetails = 'Your account is not registered as an authorized issuer for this contract.';
+      } else if (e.message.includes('NotIssuer') || e.message.includes('NotAnIssuer')) {
+        errorText = 'Not an authorized issuer';
+        errorDetails = 'Only authorized issuers can mint credentials. Contact the contract owner.';
       }
 
       setMessage({
@@ -248,9 +276,102 @@ export default function IssueCredential() {
       setLoading(false);
     }
   }
+const generateQRCode = async (hash: string) => {
+  try {
+    // Use qrcode library from CDN
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    
+    await new Promise((resolve, reject) => {
+      script.onload = resolve;
+      script.onerror = reject;
+      if (!document.querySelector('script[src*="qrcode"]')) {
+        document.head.appendChild(script);
+      } else {
+        resolve(null);
+      }
+    });
 
+    // Wait a bit for library to load
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const tempDiv = document.createElement('div');
+    document.body.appendChild(tempDiv);
+    
+    // Access QRCode through window with type assertion
+    const qrCodeLib = (window as any).QRCode;
+    
+    const qr = new qrCodeLib(tempDiv, {
+      text: hash,
+      width: 256,
+      height: 256,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: qrCodeLib.CorrectLevel?.H || 2
+    });
+    
+    setTimeout(() => {
+      const img = tempDiv.querySelector('img');
+      const canvas = tempDiv.querySelector('canvas');
+      
+      if (img && img.src) {
+        setQrCodeDataUrl(img.src);
+      } else if (canvas) {
+        setQrCodeDataUrl(canvas.toDataURL('image/png'));
+      }
+      
+      document.body.removeChild(tempDiv);
+    }, 200);
+  } catch (error) {
+    console.error('Failed to generate QR code:', error);
+    // Fallback: generate simple placeholder
+    generateFallbackQR(hash);
+  }
+};
+const generateFallbackQR = (text: string) => {
+  if (!canvasRef.current) return;
+  
+  const canvas = canvasRef.current;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  canvas.width = 256;
+  canvas.height = 256;
+
+  // White background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 256, 256);
+  
+  // Black border
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, 256, 16);
+  ctx.fillRect(0, 240, 256, 16);
+  ctx.fillRect(0, 0, 16, 256);
+  ctx.fillRect(240, 0, 16, 256);
+  
+  // Center text
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('QR CODE', 128, 100);
+  ctx.font = '10px monospace';
+  ctx.fillText(text.slice(0, 16), 128, 130);
+  ctx.fillText(text.slice(16, 32), 128, 145);
+  ctx.fillText('...', 128, 160);
+  
+  setQrCodeDataUrl(canvas.toDataURL('image/png'));
+};
+const downloadQRCode = () => {
+  if (!qrCodeDataUrl) return;
+  
+  const link = document.createElement('a');
+  link.download = `credential-${deployHash?.slice(0, 8)}.png`;
+  link.href = qrCodeDataUrl;
+  link.click();
+};
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg max-w-xl mx-auto border border-gray-100">
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
       <h2 className="text-2xl font-bold mb-6 text-gray-800 text-center">Issue Credential</h2>
 
       {/* Wallet Status */}
@@ -385,6 +506,7 @@ export default function IssueCredential() {
               <option value="moderator">Moderator</option>
               <option value="user">User</option>
               <option value="verified">Verified</option>
+              <option value="superadmin">Super Admin</option>
             </select>
           </div>
 
@@ -411,6 +533,9 @@ export default function IssueCredential() {
               <span>1 day</span>
               <span>365 days</span>
             </div>
+            <p className="text-xs text-blue-600 mt-2 bg-blue-50 p-2 rounded border border-blue-200">
+              ℹ️ TTL is automatically converted to milliseconds for the contract
+            </p>
           </div>
 
           {/* Submit Button */}
@@ -438,49 +563,40 @@ export default function IssueCredential() {
       )}
 
       {/* Deploy Hash Display */}
-      {deployHash && (
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-blue-800 flex items-center">
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Transaction Successful
-            </h3>
-            <button
-              onClick={() => openExplorer(deployHash)}
-              className="text-sm text-blue-600 hover:text-blue-800 flex items-center transition-colors"
-            >
-              View on Explorer
-              <ExternalLink className="w-3 h-3 ml-1" />
-            </button>
-          </div>
-          
-          <div className="bg-white p-3 rounded border border-blue-100">
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-xs font-medium text-gray-600">Deploy Hash:</span>
-              <button
-                onClick={() => copyToClipboard(deployHash)}
-                className="text-xs text-blue-600 hover:text-blue-800 flex items-center transition-colors"
-              >
-                {copied ? (
-                  <>
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3 h-3 mr-1" />
-                    Copy
-                  </>
-                )}
-              </button>
-            </div>
-            <p className="text-sm font-mono text-gray-800 break-all bg-gray-50 p-2 rounded">
-              {deployHash}
-            </p>
-          </div>
-        </div>
-      )}
-
+      {deployHash && qrCodeDataUrl && (
+  <div className="mt-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+    <div className="flex items-center justify-between mb-3">
+      <h3 className="text-sm font-semibold text-blue-800 flex items-center">
+        <CheckCircle className="w-4 h-4 mr-2" />
+        Credential Issued
+      </h3>
+      <button
+        onClick={() => openExplorer(deployHash)}
+        className="text-sm text-blue-600 hover:text-blue-800 flex items-center transition-colors"
+      >
+        View on Explorer
+        <ExternalLink className="w-3 h-3 ml-1" />
+      </button>
+    </div>
+    
+    {/* QR Code Only */}
+    <div className="bg-white p-4 rounded-lg flex flex-col items-center">
+      <img 
+        src={qrCodeDataUrl} 
+        alt="Credential QR Code" 
+        className="w-48 h-48 border-4 border-gray-200 rounded-lg"
+      />
+      <button
+        onClick={downloadQRCode}
+        className="mt-3 flex items-center text-sm text-blue-600 hover:text-blue-800 transition-colors font-medium"
+      >
+        <Download className="w-4 h-4 mr-1" />
+        Download QR Code
+      </button>
+      <p className="text-xs text-gray-500 mt-2">Scan to verify credential</p>
+    </div>
+  </div>
+)}
       {/* Status Message */}
       {message && (
         <div className={`mt-4 p-4 rounded-lg ${
