@@ -4,7 +4,24 @@ import cors from 'cors';
 import fetch from 'node-fetch';
 
 const app = express();
-app.use(cors());
+
+// IMPORTANT: Configure CORS for Railway deployment
+app.use(cors({
+  origin: [
+    'https://fearless-laughter-production.up.railway.app', // Your frontend URL
+    'http://localhost:3000', // Local development
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(bodyParser.json({ limit: '10mb' })); // Increased limit for file uploads
 
 const OLLAMA_HOST = 'http://localhost:11434';
@@ -68,6 +85,12 @@ app.post('/ai-verify', async (req, res) => {
       hasFiles
     } = req.body;
 
+    // Add CORS headers specifically for Railway
+    res.header('Access-Control-Allow-Origin', 'https://fearless-laughter-production.up.railway.app');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+
     // Basic validation
     if (!role || !justification || !organization) {
       return res.json({
@@ -93,6 +116,7 @@ app.post('/ai-verify', async (req, res) => {
     console.log(`Organization: ${organization}`);
     console.log(`Duration: ${duration}`);
     console.log(`Has Files: ${hasFiles}`);
+    console.log(`Frontend Origin: ${req.headers.origin || 'Unknown'}`);
     console.log(`================================\n`);
 
     // === CRITICAL VALIDATION RULES ===
@@ -579,19 +603,21 @@ app.get('/test-scenarios', (req, res) => {
   });
 });
 
-// Start server
-const PORT = 4000;
-app.listen(PORT, () => {
+// Start server with Railway configuration
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, '0.0.0.0', () => {
   console.log('\n╔════════════════════════════════════════════════════════════════╗');
-  console.log('║     AI Verification Service - Enhanced Edition                ║');
+  console.log('║     AI Verification Service - Railway Deployment             ║');
   console.log('╚════════════════════════════════════════════════════════════════╝\n');
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
   console.log(`\n📡 Endpoints:`);
   console.log(`   POST /ai-verify          - Main verification endpoint`);
   console.log(`   GET  /health             - Service health check`);
   console.log(`   POST /test-form          - Get test form data`);
   console.log(`   GET  /test-scenarios     - Get test scenarios`);
   console.log(`\n🔧 Features:`);
+  console.log(`   • Railway deployment ready`);
+  console.log(`   • CORS configured for: https://fearless-laughter-production.up.railway.app`);
   console.log(`   • Comprehensive form validation`);
   console.log(`   • Age verification (18+ required)`);
   console.log(`   • Profanity detection`);
@@ -603,9 +629,14 @@ app.listen(PORT, () => {
   console.log(`\n📚 Ollama Configuration:`);
   console.log(`   Host: ${OLLAMA_HOST}`);
   console.log(`   Model: ${MODEL}`);
+  console.log(`\n🌐 Frontend URL:`);
+  console.log(`   https://fearless-laughter-production.up.railway.app`);
+  console.log(`\n🔗 Backend URL:`);
+  console.log(`   https://amusing-celebration-production.up.railway.app`);
   console.log(`\n💡 Tips:`);
   console.log(`   - Ensure Ollama is running for AI analysis`);
   console.log(`   - Service works with rule-based fallback if Ollama unavailable`);
   console.log(`   - Check /health endpoint for service status`);
+  console.log(`   - Test connection: curl https://amusing-celebration-production.up.railway.app/health`);
   console.log(`\n════════════════════════════════════════════════════════════════\n`);
 });
