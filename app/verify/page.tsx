@@ -1,33 +1,14 @@
 "use client"
-import { useState } from 'react';
+import  { useState } from 'react';
 import { AlertCircle, CheckCircle, Shield, Clock, User, Key, Server, ArrowLeft } from 'lucide-react';
-import { CASPER_CONFIG, CONTRACT_HASH, CONTRACT_PACKAGE_HASH, CASPER_RPC_URL } from '@/utils/constants';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
-// Define proper types for the credential data
-interface CredentialData {
-  role: string;
-  issued_at: number;
-  expires_at: number;
-  revoked: boolean;
-  issuer: string;
-  accountHash?: string;
-  dictionaryKey?: string;
-  blockHeight?: number;
-  deployHash?: string;
-}
-
-interface CredentialResponse {
-  credential: CredentialData;
-  exists?: boolean;
-  isValid?: boolean;
-}
+// Change this to your backend URL
+const API_URL = 'http://localhost:3001/api';
 
 function CredentialViewer() {
   const [deployHash, setDeployHash] = useState('');
   const [dictionaryKey, setDictionaryKey] = useState('');
-  const [credential, setCredential] = useState<CredentialData | null>(null);
+  const [credential, setCredential] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -53,7 +34,7 @@ function CredentialViewer() {
       setCredential(data.credential);
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch credential');
+      setError(err.message || 'Failed to fetch credential');
     } finally {
       setLoading(false);
     }
@@ -81,7 +62,7 @@ function CredentialViewer() {
       setCredential(data.credential);
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch credential');
+      setError(err.message || 'Failed to fetch credential');
     } finally {
       setLoading(false);
     }
@@ -95,26 +76,17 @@ function CredentialViewer() {
     }, 100);
   };
 
-  const decodeRole = (roleData: string): string => {
+  const decodeRole = (roleData) => {
     if (!roleData) return 'Unknown';
     
-    // If roleData is already a string, clean it up
-    const cleaned = roleData.match(/[a-zA-Z0-9]+/g);
-    if (cleaned && cleaned.length > 0) {
-      return cleaned.reduce((a, b) => a.length > b.length ? a : b);
+    if (typeof roleData === 'string') {
+      const cleaned = roleData.match(/[a-zA-Z0-9]+/g);
+      if (cleaned && cleaned.length > 0) {
+        return cleaned.reduce((a, b) => a.length > b.length ? a : b);
+      }
     }
     
     return 'Unknown';
-  };
-
-  // Format date for display
-  const formatDate = (timestamp: number | string): string => {
-    try {
-      const date = new Date(Number(timestamp));
-      return date.toLocaleString();
-    } catch {
-      return String(timestamp);
-    }
   };
 
   // Check if credential is valid (not checking dates for now)
@@ -122,51 +94,6 @@ function CredentialViewer() {
 
   const goBack = () => {
     window.history.back();
-  };
-
-  // Render contract info from constants
-  const renderContractInfo = () => {
-    return (
-      <div className="mt-8 p-6 bg-indigo-50 rounded-xl border border-indigo-200">
-        <h3 className="text-lg font-semibold text-indigo-800 mb-3">Contract Information</h3>
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-2">
-            <Server className="w-4 h-4 text-indigo-500" />
-            <span className="text-indigo-700">Node:</span>
-            <span className="text-indigo-900 font-mono">{CASPER_CONFIG.NODE_URL}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Key className="w-4 h-4 text-indigo-500" />
-            <span className="text-indigo-700">Chain:</span>
-            <span className="text-indigo-900">{CASPER_CONFIG.CHAIN_NAME}</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <Shield className="w-4 h-4 text-indigo-500 mt-0.5" />
-            <div>
-              <span className="text-indigo-700">Contract Hash:</span>
-              <p className="text-indigo-900 font-mono text-xs break-all">{CONTRACT_HASH}</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <Shield className="w-4 h-4 text-indigo-500 mt-0.5" />
-            <div>
-              <span className="text-indigo-700">Package Hash:</span>
-              <p className="text-indigo-900 font-mono text-xs break-all">{CONTRACT_PACKAGE_HASH}</p>
-            </div>
-          </div>
-          <div className="mt-3 pt-3 border-t border-indigo-200">
-            <a 
-              href={`${CASPER_CONFIG.NETWORK.EXPLORER_URL}/contract/${CASPER_CONFIG.CONTRACT_HASH}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-600 hover:text-indigo-800 font-medium text-sm inline-flex items-center gap-1"
-            >
-              View on Explorer ↗
-            </a>
-          </div>
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -186,6 +113,7 @@ function CredentialViewer() {
             <Shield className="w-10 h-10 text-indigo-400" />
             <h1 className="text-4xl font-bold text-slate-800">CasperCred Viewer</h1>
           </div>
+
 
           {/* Query Methods */}
           <div className="space-y-6 mb-8">
@@ -275,21 +203,18 @@ function CredentialViewer() {
                   <div className="flex-1">
                     <p className="text-slate-500 text-sm">Role</p>
                     <p className="text-slate-800 font-semibold text-lg">{decodeRole(credential.role)}</p>
-                    <p className="text-slate-400 text-xs mt-1">
-                      Raw: {credential.role}
-                    </p>
                   </div>
                 </div>
 
-                {/* Commented out date sections - uncomment if you want to show dates */}
+                {/* Commented out date sections */}
                 {/*
                 <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-slate-200">
                   <Clock className="w-5 h-5 text-blue-400 flex-shrink-0 mt-1" />
                   <div className="flex-1">
                     <p className="text-slate-500 text-sm">Issued At</p>
-                    <p className="text-slate-800 font-mono">{formatDate(credential.issued_at)}</p>
+                    <p className="text-slate-800 font-mono">{formatDate(credential.issuedAt)}</p>
                     <p className="text-slate-400 text-xs mt-1">
-                      Raw: {String(credential.issued_at)}
+                      Raw: {String(credential.issuedAt)}
                     </p>
                   </div>
                 </div>
@@ -298,9 +223,9 @@ function CredentialViewer() {
                   <Clock className="w-5 h-5 text-orange-400 flex-shrink-0 mt-1" />
                   <div className="flex-1">
                     <p className="text-slate-500 text-sm">Expires At</p>
-                    <p className="text-slate-800 font-mono">{formatDate(credential.expires_at)}</p>
+                    <p className="text-slate-800 font-mono">{formatDate(credential.expiresAt)}</p>
                     <p className="text-slate-400 text-xs mt-1">
-                      Raw: {String(credential.expires_at)}
+                      Raw: {String(credential.expiresAt)}
                     </p>
                   </div>
                 </div>
@@ -344,31 +269,18 @@ function CredentialViewer() {
                   </div>
                 )}
 
-                {credential.dictionaryKey && (
-                  <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-slate-200">
-                    <Key className="w-5 h-5 text-pink-400 flex-shrink-0 mt-1" />
-                    <div className="flex-1">
-                      <p className="text-slate-500 text-sm">Dictionary Key</p>
-                      <p className="text-slate-800 font-mono text-xs break-all">{credential.dictionaryKey}</p>
-                    </div>
+                <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-slate-200">
+                  <Key className="w-5 h-5 text-pink-400 flex-shrink-0 mt-1" />
+                  <div className="flex-1">
+                    <p className="text-slate-500 text-sm">Dictionary Key</p>
+                    <p className="text-slate-800 font-mono text-xs break-all">{credential.dictionaryKey}</p>
                   </div>
-                )}
-
-                {credential.deployHash && (
-                  <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-slate-200">
-                    <Server className="w-5 h-5 text-blue-400 flex-shrink-0 mt-1" />
-                    <div className="flex-1">
-                      <p className="text-slate-500 text-sm">Deploy Hash</p>
-                      <p className="text-slate-800 font-mono text-xs break-all">{credential.deployHash}</p>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
             </div>
           )}
 
-          {/* Contract Information Section */}
-          {renderContractInfo()}
+          
         </div>
       </div>
     </div>
