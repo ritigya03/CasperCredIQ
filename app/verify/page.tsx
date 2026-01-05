@@ -5,10 +5,22 @@ import { AlertCircle, CheckCircle, Shield, Clock, User, Key, Server, ArrowLeft }
 // Change this to your backend URL
 const API_URL = 'http://localhost:3001/api';
 
+// Define the credential type
+interface Credential {
+  role: string | number | Record<string, unknown>;
+  issuer: string;
+  revoked: boolean;
+  accountHash?: string;
+  blockHeight?: string | number;
+  dictionaryKey: string;
+  issuedAt?: string | number;
+  expiresAt?: string | number;
+}
+
 function CredentialViewer() {
   const [deployHash, setDeployHash] = useState('');
   const [dictionaryKey, setDictionaryKey] = useState('');
-  const [credential, setCredential] = useState(null);
+  const [credential, setCredential] = useState<Credential | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,10 +43,10 @@ function CredentialViewer() {
         throw new Error(data.error || 'Failed to fetch credential');
       }
       
-      setCredential(data.credential);
+      setCredential(data.credential as Credential);
       
     } catch (err) {
-      setError(err.message || 'Failed to fetch credential');
+      setError(err instanceof Error ? err.message : 'Failed to fetch credential');
     } finally {
       setLoading(false);
     }
@@ -59,10 +71,10 @@ function CredentialViewer() {
         throw new Error(data.error || 'Failed to fetch credential');
       }
       
-      setCredential(data.credential);
+      setCredential(data.credential as Credential);
       
     } catch (err) {
-      setError(err.message || 'Failed to fetch credential');
+      setError(err instanceof Error ? err.message : 'Failed to fetch credential');
     } finally {
       setLoading(false);
     }
@@ -76,7 +88,7 @@ function CredentialViewer() {
     }, 100);
   };
 
-  const decodeRole = (roleData) => {
+  const decodeRole = (roleData: string | number | Record<string, unknown>) => {
     if (!roleData) return 'Unknown';
     
     if (typeof roleData === 'string') {
