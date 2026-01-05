@@ -30,7 +30,7 @@ app.use(cors({
     'http://localhost:3000',
     'http://localhost:3001',
     'https://fearless-laughter-production.up.railway.app',
-    'https://caspercrediq-production.up.railway.app'
+    'https://caspercrediq-production.up.railway.app',
     'https://amusing-celebration-production.up.railway.app/'
   ],
   credentials: true,
