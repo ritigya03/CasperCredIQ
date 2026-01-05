@@ -41,7 +41,7 @@ export default function AIVerificationForm() {
     phone: '',
     duration: ''
   });
-  
+  const AI_API_URL = process.env.AI_PUBLIC_API_URL || 'http://localhost:4000';
   const [errors, setErrors] = useState<Partial<Record<keyof VerificationFormData, string>>>({});
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
@@ -176,7 +176,7 @@ export default function AIVerificationForm() {
         hasFiles: uploadedFiles.length > 0
       };
 
-      const response = await fetch('http://localhost:4000/ai-verify', {
+      const response = await fetch('${AI_API_URL}/ai-verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -193,7 +193,7 @@ export default function AIVerificationForm() {
       setStep('result');
     } catch (error) {
       console.error('Verification failed:', error);
-      alert('Verification failed. Please ensure the backend server is running on http://localhost:4000');
+      alert('Verification failed. Please ensure the backend server is running on ${AI_API_URL}');
     } finally {
       setLoading(false);
     }
