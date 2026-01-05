@@ -176,7 +176,7 @@ export default function AIVerificationForm() {
         hasFiles: uploadedFiles.length > 0
       };
 
-      const response = await fetch('${AI_API_URL}/ai-verify', {
+      const response = await fetch(`${AI_API_URL} /ai-verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -193,7 +193,7 @@ export default function AIVerificationForm() {
       setStep('result');
     } catch (error) {
       console.error('Verification failed:', error);
-      alert('Verification failed. Please ensure the backend server is running on ${AI_API_URL}');
+      alert(`Verification failed. Please ensure the backend server is running on ${AI_API_URL}`);
     } finally {
       setLoading(false);
     }
