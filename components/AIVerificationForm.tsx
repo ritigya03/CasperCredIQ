@@ -41,7 +41,7 @@ export default function AIVerificationForm() {
     phone: '',
     duration: ''
   });
-  const AI_API_URL = process.env.NEXT_APP_AI_API_URL || 'http://localhost:4000';
+  const AI_API_URL = process.env.NEXT_PUBLIC_AI_API_URL || 'http://localhost:4000';
   const [errors, setErrors] = useState<Partial<Record<keyof VerificationFormData, string>>>({});
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
