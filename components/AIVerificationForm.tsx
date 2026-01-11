@@ -48,7 +48,7 @@ interface UploadedFile {
 
 export default function AIVerificationForm() {
   // Use the correct backend URL
-  const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+  const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
   
   const [formData, setFormData] = useState<VerificationFormData>({
     name: '',
