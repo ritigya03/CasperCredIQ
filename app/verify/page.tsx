@@ -13,6 +13,61 @@ function CredentialVerification() {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [ipfsData, setIpfsData] = useState(null);
+  const [revocationStatus, setRevocationStatus] = useState(null);
+  const [checkingRevocation, setCheckingRevocation] = useState(false);
+
+  const handleCheckRevocation = async () => {
+    if (!credentialId.trim()) {
+      setError('Please enter a credential ID');
+      return;
+    }
+
+    setCheckingRevocation(true);
+    setError('');
+    setRevocationStatus(null);
+
+    try {
+      console.log(`Checking revocation status for: ${credentialId}`);
+      
+      // Call the dictionary endpoint to get cred_revoked mapping
+      const response = await fetch(`${API_URL}/api/debug/dictionary/cred_revoked/${encodeURIComponent(credentialId.trim())}`);
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to check revocation status');
+      }
+      
+      if (data.success) {
+        if (data.exists) {
+          // Parse the boolean value
+          const isRevoked = data.value === true || data.value === 'true';
+          setRevocationStatus({
+            isRevoked,
+            message: isRevoked ? 'YES - Credential is REVOKED' : 'NO - Credential is ACTIVE',
+            verified: true,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          setRevocationStatus({
+            isRevoked: null,
+            message: 'Credential not found on blockchain',
+            verified: false,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } else {
+        throw new Error('Failed to query blockchain');
+      }
+      
+    } catch (err) {
+      console.error('Revocation check error:', err);
+      setError(`Revocation check failed: ${err.message}`);
+      setRevocationStatus(null);
+    } finally {
+      setCheckingRevocation(false);
+    }
+  };
 
   const handleVerifyBlockchain = async () => {
     if (!credentialId.trim()) {
@@ -201,6 +256,7 @@ function CredentialVerification() {
                 setError('');
                 setResult(null);
                 setIpfsData(null);
+                setRevocationStatus(null);
               }}
               className={`py-3 px-4 rounded-lg font-semibold transition-all ${
                 mode === 'blockchain'
@@ -219,6 +275,7 @@ function CredentialVerification() {
                 setError('');
                 setResult(null);
                 setIpfsData(null);
+                setRevocationStatus(null);
               }}
               className={`py-3 px-4 rounded-lg font-semibold transition-all ${
                 mode === 'ipfs'
@@ -275,6 +332,84 @@ function CredentialVerification() {
               )}
             </button>
           </div>
+
+          {/* Revocation Check Button - Only in blockchain mode */}
+          {mode === 'blockchain' && (
+            <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Shield className="w-5 h-5 text-purple-600" />
+                    <h4 className="font-semibold text-gray-900">Quick Revocation Check</h4>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    Check if this credential has been revoked on the blockchain
+                  </p>
+                </div>
+                <button
+                  onClick={handleCheckRevocation}
+                  disabled={checkingRevocation || !credentialId.trim()}
+                  className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold transition-all flex items-center gap-2 ml-4"
+                >
+                  {checkingRevocation ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Checking...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4" />
+                      Check Revoked
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Revocation Status Result */}
+          {revocationStatus && (
+            <div className={`mb-4 p-6 rounded-xl border-2 ${
+              revocationStatus.verified 
+                ? (revocationStatus.isRevoked 
+                    ? 'bg-red-50 border-red-300' 
+                    : 'bg-green-50 border-green-300')
+                : 'bg-gray-50 border-gray-300'
+            }`}>
+              <div className="flex items-center gap-3">
+                {revocationStatus.verified ? (
+                  revocationStatus.isRevoked ? (
+                    <XCircle className="w-8 h-8 text-red-600 flex-shrink-0" />
+                  ) : (
+                    <CheckCircle className="w-8 h-8 text-green-600 flex-shrink-0" />
+                  )
+                ) : (
+                  <AlertCircle className="w-8 h-8 text-gray-600 flex-shrink-0" />
+                )}
+                <div className="flex-1">
+                  <div className="font-bold text-lg mb-1">
+                    {revocationStatus.verified ? (
+                      <span className={revocationStatus.isRevoked ? 'text-red-700' : 'text-green-700'}>
+                        Revocation Status: {revocationStatus.isRevoked ? 'YES' : 'NO'}
+                      </span>
+                    ) : (
+                      <span className="text-gray-700">Not Found</span>
+                    )}
+                  </div>
+                  <div className={`text-sm ${
+                    revocationStatus.verified 
+                      ? (revocationStatus.isRevoked ? 'text-red-600' : 'text-green-600')
+                      : 'text-gray-600'
+                  }`}>
+                    {revocationStatus.message}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    Verified on blockchain at {new Date(revocationStatus.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Info text */}
           <div className="text-sm text-gray-600">

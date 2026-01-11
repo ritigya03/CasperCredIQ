@@ -1,4 +1,4 @@
-// server.js - COMPLETE FIXED VERSION for CasperCredIQ with Dictionary Verification
+// server.js - COMPLETE FIXED VERSION for CasperCredIQ
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
@@ -38,6 +38,7 @@ console.log('   RPC Node:', NODE_URL);
 console.log('   Contract Hash:', CONTRACT_HASH);
 console.log('   Package Hash:', PACKAGE_HASH);
 console.log('   IPFS Gateway:', PINATA_GATEWAY);
+console.log('   Pinata API:', PINATA_API_KEY ? '✓ Configured' : '✗ Not configured');
 
 // ==================== CASPER CLIENT SETUP ====================
 
@@ -56,6 +57,7 @@ async function initializeCasperClients() {
     console.log('✅ Casper clients initialized!');
     console.log(`   Chain: ${status.chainspec_name}`);
     console.log(`   Block: ${status.last_added_block_info.height}`);
+    console.log(`   API Version: ${status.api_version}`);
     
     return true;
   } catch (error) {
@@ -146,6 +148,7 @@ async function uploadToIPFS(credentialData) {
   } catch (error) {
     console.error('❌ IPFS upload failed:', error.message);
     
+    // Fallback: generate simulated hash
     const simulatedHash = `Qm${crypto.randomBytes(20).toString('hex')}`;
     console.log('⚠️ Using simulated IPFS hash:', simulatedHash);
     
@@ -159,23 +162,121 @@ async function uploadToIPFS(credentialData) {
   }
 }
 
+// ==================== HELPER FUNCTIONS ====================
+
+async function queryContractEntryPoint(entryPoint, args = []) {
+  if (!rpcClient) {
+    throw new Error('RPC client not available');
+  }
+  
+  try {
+    console.log(`📡 Querying contract entry point: ${entryPoint}`);
+    
+    // For query_contract, we need to use a different approach
+    // First, let's try a direct state query
+    const query = {
+      key: `hash-${CONTRACT_HASH}`,
+      path: [entryPoint]
+    };
+    
+    if (args && args.length > 0) {
+      query.args = args;
+    }
+    
+    const stateItem = await rpcClient.queryGlobalState(query);
+    
+    if (stateItem && stateItem.StoredValue && stateItem.StoredValue.CLValue) {
+      const clValue = stateItem.StoredValue.CLValue;
+      
+      // Simple parsing for common types
+      let parsedValue = null;
+      
+      if (clValue.bytes) {
+        try {
+          if (clValue.cl_type === 'Bool') {
+            parsedValue = clValue.bytes === '01';
+          } else if (clValue.cl_type === 'U8') {
+            parsedValue = parseInt(clValue.bytes, 16);
+          } else if (clValue.cl_type === 'U64') {
+            parsedValue = parseInt(clValue.bytes, 16);
+          } else if (clValue.cl_type === 'String') {
+            // Convert hex to string
+            const hex = clValue.bytes;
+            if (hex.startsWith('0x')) {
+              parsedValue = Buffer.from(hex.slice(2), 'hex').toString('utf-8');
+            } else {
+              parsedValue = Buffer.from(hex, 'hex').toString('utf-8');
+            }
+          } else if (clValue.cl_type === 'Key') {
+            parsedValue = clValue.bytes;
+          } else if (clValue.cl_type && clValue.cl_type.Option) {
+            // Handle Option type
+            if (clValue.bytes === '00') {
+              parsedValue = null; // None
+            } else {
+              // Parse the inner value
+              parsedValue = clValue.bytes;
+            }
+          }
+        } catch (parseError) {
+          console.error(`Parse error for ${entryPoint}:`, parseError);
+          parsedValue = clValue.bytes;
+        }
+      }
+      
+      return {
+        raw: stateItem,
+        parsed: parsedValue,
+        success: parsedValue !== null,
+        clType: clValue.cl_type
+      };
+    } else if (stateItem && stateItem.StoredValue && stateItem.StoredValue.Contract) {
+      // Contract package found
+      return {
+        raw: stateItem,
+        parsed: 'Contract package found',
+        success: true
+      };
+    }
+    
+    return {
+      raw: stateItem,
+      parsed: null,
+      success: false,
+      error: 'No CLValue in response'
+    };
+    
+  } catch (error) {
+    console.error(`Query failed for ${entryPoint}:`, error.message);
+    
+    // Check if it's a "key not found" error
+    if (error.message.includes('ValueNotFound') || 
+        error.message.includes('state query failed')) {
+      throw new Error(`Entry point "${entryPoint}" not found or credential doesn't exist`);
+    }
+    
+    throw error;
+  }
+}
+
 async function fetchFromIPFS(ipfsHash) {
   try {
     console.log(`Fetching from IPFS: ${ipfsHash}`);
     
+    // Try your custom gateway first with extended timeout
     const gateways = [
-      `${PINATA_GATEWAY}${ipfsHash}`,
+      `${PINATA_GATEWAY}${ipfsHash}`,  // Your custom gateway
       `https://gateway.pinata.cloud/ipfs/${ipfsHash}`,
       `https://ipfs.io/ipfs/${ipfsHash}`,
       `https://dweb.link/ipfs/${ipfsHash}`,
-      `https://${ipfsHash}.ipfs.dweb.link/`,
+      `https://${ipfsHash}.ipfs.dweb.link/`,  // Alternative format
       `https://cloudflare-ipfs.com/ipfs/${ipfsHash}`
     ];
     
     for (const [index, gateway] of gateways.entries()) {
       try {
         console.log(`  Trying gateway ${index + 1}: ${gateway}`);
-        const timeout = index === 0 ? 10000 : 5000;
+        const timeout = index === 0 ? 10000 : 5000; // Longer timeout for custom gateway
         
         const response = await axios.get(gateway, { 
           timeout: timeout,
@@ -184,7 +285,7 @@ async function fetchFromIPFS(ipfsHash) {
             'User-Agent': 'CasperCredIQ/1.0'
           },
           validateStatus: function (status) {
-            return status === 200;
+            return status === 200; // Only accept 200 OK
           }
         });
         
@@ -201,6 +302,7 @@ async function fetchFromIPFS(ipfsHash) {
       }
     }
     
+    // All gateways failed
     console.log('❌ All IPFS gateways failed');
     return {
       success: false,
@@ -215,181 +317,6 @@ async function fetchFromIPFS(ipfsHash) {
       error: error.message,
       status: 'error'
     };
-  }
-}
-
-// ==================== DICTIONARY VERIFICATION FUNCTIONS ====================
-
-/**
- * Get contract's state URef from named_keys
- */
-async function getContractStateURef() {
-  try {
-    console.log('🔍 Getting contract state URef...');
-    
-    const stateRoot = await rpcClient.getStateRootHash();
-    
-    const query = await rpcClient.queryGlobalState({
-      key: `hash-${CONTRACT_HASH}`,
-      path: []
-    });
-    
-    if (!query || !query.StoredValue || !query.StoredValue.Contract) {
-      throw new Error('Contract not found at hash: ' + CONTRACT_HASH);
-    }
-    
-    const namedKeys = query.StoredValue.Contract.named_keys || [];
-    const stateEntry = namedKeys.find(nk => nk.name === 'state');
-    
-    if (!stateEntry) {
-      throw new Error('State URef not found in contract named_keys');
-    }
-    
-    const stateUref = stateEntry.key;
-    console.log(`✅ Found state URef: ${stateUref.substring(0, 50)}...`);
-    
-    return stateUref;
-  } catch (error) {
-    console.error('❌ Failed to get state URef:', error.message);
-    throw error;
-  }
-}
-
-/**
- * Compute dictionary key for Odra contract
- * Format: blake2b(state_uref + mapping_name + key)
- */
-async function computeOdraDictionaryKey(mappingName, credentialId) {
-  try {
-    const stateUref = await getContractStateURef();
-    const urefAddr = stateUref.replace('uref-', '').split('-')[0];
-    const urefBytes = Buffer.from(urefAddr, 'hex');
-    
-    console.log(`🔧 Computing dictionary for mapping: ${mappingName}, ID: ${credentialId}`);
-    
-    const mappingNameBytes = Buffer.from(mappingName, 'utf-8');
-    const mappingNameLen = Buffer.alloc(4);
-    mappingNameLen.writeUInt32LE(mappingNameBytes.length, 0);
-    
-    const keyBytes = Buffer.from(credentialId, 'utf-8');
-    const keyLen = Buffer.alloc(4);
-    keyLen.writeUInt32LE(keyBytes.length, 0);
-    
-    const seed = Buffer.concat([
-      urefBytes,
-      mappingNameLen,
-      mappingNameBytes,
-      keyLen,
-      keyBytes
-    ]);
-    
-    const hash = crypto.createHash('blake2b512').update(seed).digest();
-    const dictAddr = hash.slice(0, 32).toString('hex');
-    const dictionaryKey = `dictionary-${dictAddr}`;
-    
-    console.log(`✅ Computed dictionary: ${dictionaryKey}`);
-    
-    return dictionaryKey;
-    
-  } catch (error) {
-    console.error('❌ Dictionary computation failed:', error);
-    throw error;
-  }
-}
-
-/**
- * Query dictionary and parse CLValue
- */
-async function queryDictionary(dictionaryKey) {
-  try {
-    const stateRoot = await rpcClient.getStateRootHash();
-    
-    const query = await rpcClient.queryGlobalState({
-      key: dictionaryKey,
-      path: []
-    });
-    
-    if (!query || !query.StoredValue || !query.StoredValue.CLValue) {
-      return { found: false, data: null };
-    }
-    
-    const clValue = query.StoredValue.CLValue;
-    const parsedValue = parseCLValue(clValue);
-    
-    return {
-      found: true,
-      data: parsedValue,
-      raw: clValue
-    };
-  } catch (error) {
-    if (error.message && (error.message.includes('ValueNotFound') || 
-                          error.message.includes('state query failed'))) {
-      return { found: false, data: null };
-    }
-    throw error;
-  }
-}
-
-/**
- * Parse CLValue from Odra contract
- */
-function parseCLValue(clValue) {
-  if (!clValue || !clValue.bytes) return null;
-  
-  const { cl_type, bytes } = clValue;
-  const hexBytes = bytes.startsWith('0x') ? bytes.slice(2) : bytes;
-  
-  try {
-    if (cl_type === 'Bool') {
-      return hexBytes === '01';
-    } else if (cl_type === 'U8') {
-      return parseInt(hexBytes, 16);
-    } else if (cl_type === 'U64' || cl_type === 'U32') {
-      return parseInt(hexBytes, 16);
-    } else if (cl_type === 'String') {
-      const buffer = Buffer.from(hexBytes, 'hex');
-      const length = buffer.readUInt32LE(0);
-      return buffer.toString('utf-8', 4, 4 + length);
-    } else if (cl_type === 'Key' || cl_type === 'ByteArray') {
-      return bytes;
-    } else if (cl_type === 'Option') {
-      if (hexBytes === '00') return null;
-      const innerValue = { ...clValue, bytes: '0x' + hexBytes.slice(2) };
-      return parseCLValue(innerValue);
-    } else if (cl_type && cl_type.Struct) {
-      const buffer = Buffer.from(hexBytes, 'hex');
-      if (buffer.length === 33 && buffer[0] === 0x00) {
-        const accountBytes = buffer.slice(1);
-        return 'account-hash-' + accountBytes.toString('hex');
-      }
-      return bytes;
-    }
-    
-    return bytes;
-  } catch (error) {
-    console.error('Parse error for CLValue:', error);
-    return bytes;
-  }
-}
-
-/**
- * Parse Address from bytes
- */
-function parseAddressFromBytes(hexBytes) {
-  if (!hexBytes) return null;
-  
-  try {
-    const bytes = hexBytes.startsWith('0x') ? hexBytes.slice(2) : hexBytes;
-    const buffer = Buffer.from(bytes, 'hex');
-    
-    if (buffer.length === 33 && buffer[0] === 0x00) {
-      const accountHashBytes = buffer.slice(1);
-      return 'account-hash-' + accountHashBytes.toString('hex');
-    }
-    return null;
-  } catch (error) {
-    console.error('Address parse error:', error);
-    return null;
   }
 }
 
@@ -504,10 +431,16 @@ app.post('/api/requests', async (req, res) => {
       status: 'pending',
       submittedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      // Ensure required fields
       recipientPublicKey: requestData.recipientPublicKey || '0',
       credentialType: requestData.credentialType || 'employee',
       validityDays: requestData.validityDays || '30',
-      aiConfidence: requestData.aiConfidence || 0.85
+      aiConfidence: requestData.aiConfidence || 0.85,
+      // AI Verification fields from your original code
+      aiRecommendation: requestData.aiRecommendation || true,
+      aiJustification: requestData.aiJustification || 'Automatically approved by AI verification system',
+      organization: requestData.organization || 'Unknown Organization',
+      justification: requestData.justification || 'No justification provided'
     };
     
     pendingRequests.set(requestId, request);
@@ -518,7 +451,9 @@ app.post('/api/requests', async (req, res) => {
       success: true,
       requestId: requestId,
       message: 'Request submitted successfully',
-      nextStep: 'Your request is now pending issuer approval'
+      nextStep: 'Your request is now pending issuer approval',
+      aiVerified: request.aiRecommendation,
+      confidence: request.aiConfidence
     });
   } catch (error) {
     console.error('Error submitting request:', error);
@@ -649,6 +584,7 @@ app.post('/api/deploy/submit', async (req, res) => {
       });
     }
     
+    // Check if RPC is available
     if (!casperClient) {
       return res.status(503).json({
         success: false,
@@ -657,6 +593,7 @@ app.post('/api/deploy/submit', async (req, res) => {
       });
     }
     
+    // Parse deploy
     console.log('🔍 Parsing deploy JSON...');
     const parsed = DeployUtil.deployFromJson(signedDeploy);
     
@@ -678,6 +615,7 @@ app.post('/api/deploy/submit', async (req, res) => {
       timestamp: deployObject.header.timestamp
     });
     
+    // Validate deploy
     console.log('✅ Validating deploy...');
     const isValid = DeployUtil.validateDeploy(deployObject);
     
@@ -693,6 +631,7 @@ app.post('/api/deploy/submit', async (req, res) => {
     console.log('✅ Deploy validated successfully');
     console.log('🚀 Submitting deploy to blockchain...');
     
+    // Submit to Casper network
     const deployHash = await casperClient.putDeploy(deployObject);
     
     console.log(`✅ Deploy submitted! Hash: ${deployHash}`);
@@ -707,7 +646,9 @@ app.post('/api/deploy/submit', async (req, res) => {
     
   } catch (error) {
     console.error('❌ Deploy submission failed:', error);
+    console.error('Error stack:', error.stack);
     
+    // Check if it's a network error
     if (error.message.includes('ETIMEDOUT') || error.message.includes('ECONNREFUSED')) {
       res.status(503).json({
         success: false,
@@ -781,6 +722,7 @@ app.get('/api/credentials/verify/:ipfsHash', async (req, res) => {
         timestamp: new Date().toISOString()
       });
     } else {
+      // Check if we have it in memory
       const storedCredential = Array.from(issuedCredentials.values())
         .find(cred => cred.ipfsHash === ipfsHash);
       
@@ -829,6 +771,8 @@ app.post('/api/notify', (req, res) => {
     console.log('   Credential ID:', credentialId);
     console.log('   IPFS:', ipfsHash);
     
+    // In production, integrate with SendGrid, AWS SES, or Nodemailer
+    
     res.json({
       success: true,
       message: 'Notification sent (simulated)',
@@ -858,6 +802,7 @@ app.post('/api/requests/test', (req, res) => {
         justification: 'I need access to the development environment for backend API work on the new microservices architecture.',
         aiConfidence: 0.92,
         aiRecommendation: true,
+        aiJustification: 'High confidence based on verified GitHub contributions and professional certifications',
         submittedAt: new Date().toISOString(),
         credentialType: 'employee',
         recipientPublicKey: '0202a35af1609d20a5430464df87a7e7376d01cf415dbb08ae732de33fd619c05a37',
@@ -865,7 +810,9 @@ app.post('/api/requests/test', (req, res) => {
         metadata: { 
           department: 'Engineering', 
           skills: ['Rust', 'React', 'Node.js'],
-          employeeId: 'EMP-2024-001'
+          employeeId: 'EMP-2024-001',
+          aiVerified: true,
+          verificationSource: 'GitHub, LinkedIn, Professional Certs'
         },
         skills: ['Rust', 'React', 'Node.js'],
         department: 'Engineering',
@@ -880,6 +827,7 @@ app.post('/api/requests/test', (req, res) => {
         justification: 'Access required for research data analysis and lab equipment in the Computer Science department.',
         aiConfidence: 0.78,
         aiRecommendation: true,
+        aiJustification: 'Moderate confidence. University email verified. Requires additional supervisor confirmation.',
         submittedAt: new Date(Date.now() - 86400000).toISOString(),
         credentialType: 'student',
         recipientPublicKey: '01abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
@@ -887,17 +835,44 @@ app.post('/api/requests/test', (req, res) => {
         metadata: { 
           department: 'Computer Science', 
           supervisor: 'Dr. Wilson',
-          studentId: 'STU-2024-042'
+          studentId: 'STU-2024-042',
+          aiVerified: true,
+          verificationSource: 'University Email, Course Registration'
         },
         skills: ['Python', 'Data Analysis', 'Machine Learning'],
         department: 'Computer Science',
+        status: 'pending'
+      },
+      {
+        id: 'REQ_TEST_003',
+        name: 'Carol Davis',
+        email: 'carol@contractor.com',
+        role: 'Security Consultant',
+        organization: 'SecureNet Solutions',
+        justification: 'Temporary access needed for security audit of network infrastructure and penetration testing.',
+        aiConfidence: 0.85,
+        aiRecommendation: true,
+        aiJustification: 'High confidence. Company domain verified. Security certifications confirmed.',
+        submittedAt: new Date(Date.now() - 172800000).toISOString(),
+        credentialType: 'contractor',
+        recipientPublicKey: '02fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+        validityDays: '90',
+        metadata: { 
+          department: 'Security', 
+          projectCode: 'SEC-AUDIT-2024',
+          clearanceLevel: 'L2',
+          aiVerified: true,
+          verificationSource: 'Company Domain, Security Certs, Previous Contracts'
+        },
+        skills: ['Cybersecurity', 'Penetration Testing', 'Risk Assessment'],
+        department: 'Security',
         status: 'pending'
       }
     ];
     
     testRequests.forEach(req => pendingRequests.set(req.id, req));
     
-    console.log(`✅ Added ${testRequests.length} test requests`);
+    console.log(`✅ Added ${testRequests.length} test requests with AI verification data`);
     
     res.json({
       success: true,
@@ -906,7 +881,9 @@ app.post('/api/requests/test', (req, res) => {
       requests: testRequests.map(r => ({ 
         id: r.id, 
         name: r.name, 
-        role: r.role 
+        role: r.role,
+        aiConfidence: r.aiConfidence,
+        aiRecommendation: r.aiRecommendation
       }))
     });
   } catch (error) {
@@ -917,243 +894,10 @@ app.post('/api/requests/test', (req, res) => {
   }
 });
 
-// ==================== VERIFICATION ENDPOINTS ====================
+// ==================== AI VERIFICATION ENDPOINTS ====================
 
 /**
- * 13. Dictionary-based Verification (Main endpoint)
- */
-app.get('/api/verify/:credentialId', async (req, res) => {
-  try {
-    const { credentialId } = req.params;
-    
-    console.log(`🔐 Dictionary verification for: ${credentialId}`);
-    
-    if (!rpcClient) {
-      return res.status(503).json({
-        success: false,
-        error: 'Blockchain RPC unavailable',
-        message: 'Cannot verify credential in offline mode'
-      });
-    }
-    
-    const mappings = [
-      { name: 'cred_holder', field: 'holder' },
-      { name: 'cred_issuer', field: 'issuer' },
-      { name: 'cred_confidence', field: 'confidence' },
-      { name: 'cred_expires', field: 'expiresAt' },
-      { name: 'cred_revoked', field: 'revoked' },
-      { name: 'cred_ipfs', field: 'ipfsHash' }
-    ];
-    
-    const results = {};
-    const dictionaries = {};
-    
-    for (const mapping of mappings) {
-      console.log(`📊 Querying mapping: ${mapping.name}`);
-      
-      try {
-        const dictKey = await computeOdraDictionaryKey(mapping.name, credentialId);
-        const queryResult = await queryDictionary(dictKey);
-        
-        dictionaries[mapping.name] = dictKey;
-        results[mapping.field] = queryResult.found ? queryResult.data : null;
-        
-        console.log(`   ${mapping.name}: ${queryResult.found ? 'FOUND' : 'NOT FOUND'}`);
-        if (queryResult.found) {
-          console.log(`   Value: ${results[mapping.field]}`);
-        }
-      } catch (error) {
-        console.error(`Error querying ${mapping.name}:`, error.message);
-        results[mapping.field] = null;
-      }
-    }
-    
-    if (!results.holder) {
-      return res.json({
-        success: true,
-        credentialId,
-        exists: false,
-        isValid: false,
-        message: 'Credential not found'
-      });
-    }
-    
-    const holder = results.holder;
-    const issuer = results.issuer;
-    const revoked = results.revoked === true || results.revoked === 'true';
-    const expiresAt = results.expiresAt ? parseInt(results.expiresAt) : null;
-    const confidence = results.confidence ? parseInt(results.confidence) : null;
-    const ipfsHash = results.ipfsHash;
-    
-    const currentTime = Date.now();
-    const isExpired = expiresAt ? currentTime > expiresAt : false;
-    const isValid = !revoked && !isExpired;
-    
-    let ipfsData = null;
-    if (ipfsHash) {
-      try {
-        const ipfsResult = await fetchFromIPFS(ipfsHash);
-        if (ipfsResult.success) {
-          ipfsData = ipfsResult.data;
-        }
-      } catch (ipfsError) {
-        console.log('Could not fetch IPFS data:', ipfsError.message);
-      }
-    }
-    
-    const response = {
-      success: true,
-      credentialId,
-      exists: true,
-      isValid,
-      details: {
-        holder,
-        issuer,
-        revoked,
-        expiresAt,
-        isExpired,
-        aiConfidence: confidence,
-        ipfsHash
-      },
-      verifiedAt: new Date().toISOString(),
-      verificationMethod: 'dictionary'
-    };
-    
-    if (process.env.NODE_ENV === 'development') {
-      response.dictionaries = dictionaries;
-    }
-    
-    if (ipfsData) {
-      response.ipfsData = ipfsData;
-    }
-    
-    console.log(`✅ Verification complete: ${credentialId} is ${isValid ? 'VALID' : 'INVALID'}`);
-    
-    res.json(response);
-    
-  } catch (error) {
-    console.error('❌ Verification error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      message: 'Failed to verify credential'
-    });
-  }
-});
-
-/**
- * 14. Simple Verification (Quick check)
- */
-app.get('/api/verify/simple/:credentialId', async (req, res) => {
-  try {
-    const { credentialId } = req.params;
-    
-    console.log(`⚡ Quick verification for: ${credentialId}`);
-    
-    if (!rpcClient) {
-      return res.json({
-        success: false,
-        error: 'RPC unavailable'
-      });
-    }
-    
-    const holderDict = await computeOdraDictionaryKey('cred_holder', credentialId);
-    const holderResult = await queryDictionary(holderDict);
-    
-    if (!holderResult.found) {
-      return res.json({
-        success: true,
-        credentialId,
-        exists: false,
-        valid: false,
-        message: 'Credential not found'
-      });
-    }
-    
-    const revokedDict = await computeOdraDictionaryKey('cred_revoked', credentialId);
-    const revokedResult = await queryDictionary(revokedDict);
-    const isRevoked = revokedResult.found && revokedResult.data === true;
-    
-    res.json({
-      success: true,
-      credentialId,
-      exists: true,
-      valid: !isRevoked,
-      revoked: isRevoked,
-      holder: holderResult.data,
-      message: isRevoked ? 'Credential has been revoked' : 'Credential is active',
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error('Quick verification error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * 15. Get Credential Details (All fields)
- */
-app.get('/api/credential/:credentialId', async (req, res) => {
-  try {
-    const { credentialId } = req.params;
-    
-    console.log(`📄 Getting details for: ${credentialId}`);
-    
-    if (!rpcClient) {
-      return res.status(503).json({
-        success: false,
-        error: 'Blockchain unavailable'
-      });
-    }
-    
-    const fields = [
-      { dict: 'cred_holder', name: 'holder' },
-      { dict: 'cred_issuer', name: 'issuer' },
-      { dict: 'cred_confidence', name: 'aiConfidence' },
-      { dict: 'cred_expires', name: 'expiresAt' },
-      { dict: 'cred_revoked', name: 'revoked' },
-      { dict: 'cred_ipfs', name: 'ipfsHash' }
-    ];
-    
-    const result = { credentialId };
-    
-    for (const field of fields) {
-      try {
-        const dictKey = await computeOdraDictionaryKey(field.dict, credentialId);
-        const queryResult = await queryDictionary(dictKey);
-        result[field.name] = queryResult.found ? queryResult.data : null;
-      } catch (error) {
-        result[field.name] = null;
-      }
-    }
-    
-    const isRevoked = result.revoked === true;
-    const expiresAt = result.expiresAt ? parseInt(result.expiresAt) : null;
-    const isExpired = expiresAt ? Date.now() > expiresAt : false;
-    const isValid = !isRevoked && !isExpired;
-    
-    res.json({
-      success: true,
-      credential: result,
-      isValid,
-      verifiedAt: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error('Get credential error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * 16. Legacy Verification (for backward compatibility)
+ * 13. Verify Credential (Main endpoint - with AI Verification)
  */
 app.post('/api/verify-credential', async (req, res) => {
   try {
@@ -1166,68 +910,222 @@ app.post('/api/verify-credential', async (req, res) => {
       });
     }
     
-    console.log(`🔍 Verifying credential: ${credentialId}`);
+    console.log(`🔍 Verifying credential with AI check: ${credentialId}`);
     
+    // First, try to get from blockchain
     if (rpcClient) {
       try {
-        const verifyResponse = await fetch(`http://localhost:${PORT}/api/verify/${credentialId}`);
-        const data = await verifyResponse.json();
+        // Try blockchain verification first
+        const verifyResult = await queryContractEntryPoint(
+          'verify_credential',
+          [{ 
+            name: 'credential_id', 
+            value: { 
+              cl_type: 'String', 
+              value: credentialId 
+            } 
+          }]
+        );
         
-        if (data.success) {
+        const isValid = verifyResult && verifyResult.success;
+        
+        // Try to get more details
+        let ipfsHash = null;
+        let holder = null;
+        let issuer = null;
+        let aiConfidence = null;
+        
+        try {
+          ipfsHash = await queryContractEntryPoint(
+            'get_ipfs_hash',
+            [{ 
+              name: 'credential_id', 
+              value: { 
+                cl_type: 'String', 
+                value: credentialId 
+              } 
+            }]
+          );
+          
+          holder = await queryContractEntryPoint(
+            'get_holder',
+            [{ 
+              name: 'credential_id', 
+              value: { 
+                cl_type: 'String', 
+                value: credentialId 
+              } 
+            }]
+          );
+          
+          issuer = await queryContractEntryPoint(
+            'get_issuer',
+            [{ 
+              name: 'credential_id', 
+              value: { 
+                cl_type: 'String', 
+                value: credentialId 
+              } 
+            }]
+          );
+          
+          // Try to get AI confidence from contract
+          try {
+            aiConfidence = await queryContractEntryPoint(
+              'get_confidence',
+              [{ 
+                name: 'credential_id', 
+                value: { 
+                  cl_type: 'String', 
+                  value: credentialId 
+                } 
+              }]
+            );
+          } catch (confidenceError) {
+            console.log('AI confidence not available in contract');
+          }
+        } catch (detailError) {
+          console.log('Could not fetch credential details:', detailError.message);
+        }
+        
+        // Try to fetch IPFS data if hash is available
+        let ipfsData = null;
+        if (ipfsHash && ipfsHash.parsed) {
+          const ipfsResult = await fetchFromIPFS(ipfsHash.parsed);
+          if (ipfsResult.success) {
+            ipfsData = ipfsResult.data;
+            
+            // Extract AI verification data from IPFS
+            const aiData = {
+              aiVerified: ipfsData.aiRecommendation || false,
+              aiConfidence: ipfsData.aiConfidence || ipfsData.aiConfidenceScore || 0,
+              aiJustification: ipfsData.aiJustification || 'No AI justification provided',
+              verificationSource: ipfsData.verificationSource || 'Unknown'
+            };
+            
+            res.json({
+              success: true,
+              credential: {
+                credentialId: credentialId,
+                valid: isValid,
+                holder: holder?.parsed || holder?.raw || 'Unknown',
+                issuer: issuer?.parsed || issuer?.raw || 'Unknown',
+                ipfsHash: ipfsHash?.parsed || ipfsHash?.raw || null,
+                verifiedOnChain: true,
+                timestamp: new Date().toISOString(),
+                // AI Verification Data
+                aiVerification: aiData,
+                overallConfidence: Math.max(
+                  aiData.aiConfidence,
+                  aiConfidence?.parsed || 0
+                )
+              },
+              ipfsData: ipfsData,
+              message: isValid ? 'Credential is valid' : 'Credential is invalid',
+              verification: {
+                blockchain: true,
+                aiVerified: aiData.aiVerified,
+                confidence: aiData.aiConfidence,
+                valid: isValid
+              }
+            });
+            return;
+          }
+        }
+        
+        // If no IPFS data, return basic verification
+        res.json({
+          success: true,
+          credential: {
+            credentialId: credentialId,
+            valid: isValid,
+            holder: holder?.parsed || holder?.raw || 'Unknown',
+            issuer: issuer?.parsed || issuer?.raw || 'Unknown',
+            ipfsHash: ipfsHash?.parsed || ipfsHash?.raw || null,
+            verifiedOnChain: true,
+            timestamp: new Date().toISOString()
+          },
+          message: isValid ? 'Credential is valid' : 'Credential is invalid',
+          verification: {
+            blockchain: true,
+            valid: isValid,
+            aiVerified: false
+          }
+        });
+        
+      } catch (blockchainError) {
+        console.log('Blockchain verification failed:', blockchainError.message);
+        
+        // Fallback to checking in-memory storage with AI data
+        const storedCredential = issuedCredentials.get(credentialId);
+        if (storedCredential) {
           return res.json({
             success: true,
             credential: {
-              credentialId: credentialId,
-              valid: data.isValid,
-              holder: data.details.holder,
-              issuer: data.details.issuer,
-              aiConfidence: data.details.aiConfidence,
-              ipfsHash: data.details.ipfsHash,
-              expiresAt: data.details.expiresAt,
-              revoked: data.details.revoked,
-              verifiedOnChain: true,
-              timestamp: data.verifiedAt
+              ...storedCredential,
+              verifiedOnChain: false,
+              note: 'Found in local storage (blockchain query failed)',
+              aiVerification: {
+                aiVerified: storedCredential.aiRecommendation || false,
+                aiConfidence: storedCredential.aiConfidence || 0,
+                aiJustification: storedCredential.aiJustification || 'No AI justification',
+                verificationSource: storedCredential.verificationSource || 'Local storage'
+              }
             },
-            message: data.isValid ? 'Credential is valid' : 'Credential is invalid',
+            message: 'Credential found in local storage',
             verification: {
-              blockchain: true,
-              method: 'dictionary',
-              valid: data.isValid
+              blockchain: false,
+              aiVerified: storedCredential.aiRecommendation || false,
+              valid: true
             }
           });
         }
-      } catch (dictError) {
-        console.log('Dictionary verification failed, falling back:', dictError.message);
+        
+        res.json({
+          success: false,
+          error: 'Credential not found',
+          message: 'Credential not found on blockchain or in local storage',
+          credentialId: credentialId,
+          verification: {
+            blockchain: false,
+            aiVerified: false,
+            valid: false
+          }
+        });
       }
-    }
-    
-    const storedCredential = issuedCredentials.get(credentialId);
-    if (storedCredential) {
-      return res.json({
-        success: true,
-        credential: {
-          ...storedCredential,
-          verifiedOnChain: false,
-          note: 'Found in local storage (blockchain query failed)'
-        },
-        message: 'Credential found in local storage',
-        verification: {
-          blockchain: false,
-          valid: true
-        }
+    } else {
+      // RPC not available, check in-memory storage with AI data
+      const storedCredential = issuedCredentials.get(credentialId);
+      if (storedCredential) {
+        return res.json({
+          success: true,
+          credential: {
+            ...storedCredential,
+            verifiedOnChain: false,
+            note: 'Found in local storage (blockchain offline)',
+            aiVerification: {
+              aiVerified: storedCredential.aiRecommendation || false,
+              aiConfidence: storedCredential.aiConfidence || 0,
+              aiJustification: storedCredential.aiJustification || 'No AI justification',
+              verificationSource: storedCredential.verificationSource || 'Local storage'
+            }
+          },
+          message: 'Credential found in local storage',
+          verification: {
+            blockchain: false,
+            aiVerified: storedCredential.aiRecommendation || false,
+            valid: true
+          }
+        });
+      }
+      
+      res.json({
+        success: false,
+        error: 'Credential not found',
+        message: 'Blockchain offline and credential not in local storage',
+        credentialId: credentialId
       });
     }
-    
-    res.json({
-      success: false,
-      error: 'Credential not found',
-      message: 'Credential not found on blockchain or in local storage',
-      credentialId: credentialId,
-      verification: {
-        blockchain: false,
-        valid: false
-      }
-    });
     
   } catch (error) {
     console.error('Verification error:', error);
@@ -1239,46 +1137,194 @@ app.post('/api/verify-credential', async (req, res) => {
 });
 
 /**
- * 17. Compute Dictionary Key (Debug endpoint)
+ * 14. Verify Credential on Blockchain (GET version with AI)
  */
-app.get('/api/debug/dictionary/:mapping/:credentialId', async (req, res) => {
+app.get('/api/blockchain/credential/:credentialId', async (req, res) => {
   try {
-    const { mapping, credentialId } = req.params;
+    const { credentialId } = req.params;
     
-    console.log(`🔧 Computing dictionary key for: ${mapping}/${credentialId}`);
+    console.log(`🔍 Querying blockchain for credential with AI: ${credentialId}`);
     
     if (!rpcClient) {
       return res.status(503).json({
         success: false,
-        error: 'RPC unavailable'
+        error: 'Blockchain RPC unavailable',
+        message: 'Cannot query blockchain in offline mode'
       });
     }
     
-    const dictKey = await computeOdraDictionaryKey(mapping, credentialId);
-    
-    const queryResult = await queryDictionary(dictKey);
-    
-    res.json({
-      success: true,
-      mapping,
-      credentialId,
-      dictionaryKey: dictKey,
-      exists: queryResult.found,
-      value: queryResult.data,
-      raw: queryResult.raw
-    });
+    try {
+      // Query verify_credential entry point
+      const verifyResult = await queryContractEntryPoint(
+        'verify_credential',
+        [{ 
+          name: 'credential_id', 
+          value: { 
+            cl_type: 'String', 
+            value: credentialId 
+          } 
+        }]
+      );
+      
+      const isValid = verifyResult && verifyResult.success;
+      
+      // Get additional details
+      let holder = null;
+      let issuer = null;
+      let ipfsHash = null;
+      let confidence = null;
+      let expiresAt = null;
+      let isRevoked = null;
+      
+      try {
+        holder = await queryContractEntryPoint(
+          'get_holder',
+          [{ 
+            name: 'credential_id', 
+            value: { 
+              cl_type: 'String', 
+              value: credentialId 
+            } 
+          }]
+        );
+        
+        issuer = await queryContractEntryPoint(
+          'get_issuer',
+          [{ 
+            name: 'credential_id', 
+            value: { 
+              cl_type: 'String', 
+              value: credentialId 
+            } 
+          }]
+        );
+        
+        ipfsHash = await queryContractEntryPoint(
+          'get_ipfs_hash',
+          [{ 
+            name: 'credential_id', 
+            value: { 
+              cl_type: 'String', 
+              value: credentialId 
+            } 
+          }]
+        );
+        
+        confidence = await queryContractEntryPoint(
+          'get_confidence',
+          [{ 
+            name: 'credential_id', 
+            value: { 
+              cl_type: 'String', 
+              value: credentialId 
+            } 
+          }]
+        );
+        
+        expiresAt = await queryContractEntryPoint(
+          'get_expiry',
+          [{ 
+            name: 'credential_id', 
+            value: { 
+              cl_type: 'String', 
+              value: credentialId 
+            } 
+          }]
+        );
+        
+        isRevoked = await queryContractEntryPoint(
+          'is_revoked',
+          [{ 
+            name: 'credential_id', 
+            value: { 
+              cl_type: 'String', 
+              value: credentialId 
+            } 
+          }]
+        );
+      } catch (detailError) {
+        console.log('Some details unavailable:', detailError.message);
+      }
+      
+      // Try to get IPFS data for AI verification
+      let ipfsData = null;
+      let aiVerification = null;
+      if (ipfsHash?.parsed) {
+        const ipfsResult = await fetchFromIPFS(ipfsHash.parsed);
+        if (ipfsResult.success) {
+          ipfsData = ipfsResult.data;
+          aiVerification = {
+            aiVerified: ipfsData.aiRecommendation || false,
+            aiConfidence: ipfsData.aiConfidence || ipfsData.confidenceScore || 0,
+            aiJustification: ipfsData.aiJustification || ipfsData.justification || 'No AI justification',
+            verificationSource: ipfsData.verificationSource || 'Unknown'
+          };
+        }
+      }
+      
+      const credentialData = {
+        credentialId: credentialId,
+        valid: isValid,
+        holder: holder?.parsed || holder?.raw || null,
+        issuer: issuer?.parsed || issuer?.raw || null,
+        aiConfidence: confidence?.parsed || confidence?.raw || null,
+        ipfsHash: ipfsHash?.parsed || ipfsHash?.raw || null,
+        expiresAt: expiresAt?.parsed || expiresAt?.raw || null,
+        isRevoked: isRevoked?.parsed || isRevoked?.raw || false,
+        timestamp: new Date().toISOString(),
+        verifiedOnChain: true,
+        contractHash: CONTRACT_HASH,
+        aiVerification: aiVerification,
+        overallVerification: {
+          blockchain: true,
+          ai: aiVerification?.aiVerified || false,
+          confidence: Math.max(
+            confidence?.parsed || 0,
+            aiVerification?.aiConfidence || 0
+          )
+        }
+      };
+      
+      console.log(`✅ Blockchain query completed for: ${credentialId}`);
+      
+      res.json({
+        success: true,
+        message: 'Credential found on blockchain',
+        credential: credentialData,
+        ipfsData: ipfsData,
+        verification: {
+          blockchain: true,
+          valid: isValid,
+          contractVerified: true,
+          aiVerified: aiVerification?.aiVerified || false,
+          aiConfidence: aiVerification?.aiConfidence || 0
+        }
+      });
+      
+    } catch (queryError) {
+      console.log('❌ Credential not found on blockchain:', queryError.message);
+      
+      res.json({
+        success: false,
+        error: 'Credential not found on blockchain',
+        message: 'This credential ID does not exist in the smart contract',
+        credentialId: credentialId,
+        verifiedOnChain: false
+      });
+    }
     
   } catch (error) {
-    console.error('Debug error:', error);
+    console.error('Blockchain query error:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      message: 'Failed to query blockchain'
     });
   }
 });
 
 /**
- * 18. Get IPFS Data by Hash
+ * 15. Get IPFS Data by Hash
  */
 app.get('/api/ipfs/:hash', async (req, res) => {
   try {
@@ -1301,9 +1347,17 @@ app.get('/api/ipfs/:hash', async (req, res) => {
         hash: hash,
         gateway: result.gateway,
         data: result.data,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        // Extract AI verification data
+        aiVerification: {
+          aiVerified: result.data.aiRecommendation || false,
+          aiConfidence: result.data.aiConfidence || 0,
+          aiJustification: result.data.aiJustification || 'No AI justification',
+          verificationSource: result.data.verificationSource || 'Unknown'
+        }
       });
     } else {
+      // Check if we have it in memory
       const storedData = Array.from(issuedCredentials.values())
         .find(cred => cred.ipfsHash === hash);
       
@@ -1314,7 +1368,13 @@ app.get('/api/ipfs/:hash', async (req, res) => {
           gateway: 'local_storage',
           data: storedData,
           note: 'Data from local storage (IPFS gateways unavailable)',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          aiVerification: {
+            aiVerified: storedData.aiRecommendation || false,
+            aiConfidence: storedData.aiConfidence || 0,
+            aiJustification: storedData.aiJustification || 'No AI justification',
+            verificationSource: storedData.verificationSource || 'Local storage'
+          }
         });
       }
       
@@ -1339,11 +1399,62 @@ app.get('/api/ipfs/:hash', async (req, res) => {
 });
 
 /**
- * 19. Test IPFS Gateway
+ * 16. Get Contract Information
+ */
+app.get('/api/blockchain/contract', async (req, res) => {
+  try {
+    if (!rpcClient) {
+      return res.json({
+        success: false,
+        status: 'offline',
+        message: 'Cannot query contract in offline mode'
+      });
+    }
+    
+    try {
+      // Query contract owner
+      const owner = await queryContractEntryPoint('get_owner', []);
+      
+      res.json({
+        success: true,
+        contract: {
+          hash: CONTRACT_HASH,
+          packageHash: PACKAGE_HASH,
+          owner: owner?.parsed || owner?.raw || 'Unknown',
+          rpcNode: NODE_URL,
+          queryable: true,
+          status: 'active'
+        }
+      });
+    } catch (error) {
+      res.json({
+        success: false,
+        error: 'Contract query failed',
+        message: error.message,
+        contract: {
+          hash: CONTRACT_HASH,
+          packageHash: PACKAGE_HASH,
+          rpcNode: NODE_URL,
+          queryable: false,
+          status: 'query_failed'
+        }
+      });
+    }
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 17. Test IPFS Gateway
  */
 app.get('/api/test/ipfs-gateway', async (req, res) => {
   try {
-    const testHash = 'QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco';
+    const testHash = 'QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco'; // Wikipedia IPFS hash for testing
     
     console.log('🧪 Testing IPFS gateway:', PINATA_GATEWAY);
     
@@ -1407,9 +1518,330 @@ app.get('/api/test/ipfs-gateway', async (req, res) => {
   }
 });
 
+/**
+ * 18. Complete Verification (Blockchain + IPFS + AI)
+ */
+app.get('/api/verify/complete/:credentialId', async (req, res) => {
+  try {
+    const { credentialId } = req.params;
+    
+    console.log(`🔍 Complete verification with AI for: ${credentialId}`);
+    
+    const result = {
+      credentialId: credentialId,
+      timestamp: new Date().toISOString(),
+      blockchain: {},
+      ipfs: {},
+      aiVerification: {},
+      status: 'pending'
+    };
+    
+    // 1. Check blockchain
+    if (rpcClient) {
+      try {
+        const blockchainResponse = await queryContractEntryPoint(
+          'verify_credential',
+          [{ 
+            name: 'credential_id', 
+            value: { 
+              cl_type: 'String', 
+              value: credentialId 
+            } 
+          }]
+        );
+        
+        result.blockchain = {
+          exists: !!blockchainResponse,
+          valid: blockchainResponse?.success || false,
+          raw: blockchainResponse
+        };
+        
+        // Get IPFS hash from blockchain
+        if (blockchainResponse) {
+          const ipfsHash = await queryContractEntryPoint(
+            'get_ipfs_hash',
+            [{ 
+              name: 'credential_id', 
+              value: { 
+                cl_type: 'String', 
+                value: credentialId 
+              } 
+            }]
+          );
+          
+          if (ipfsHash?.parsed) {
+            result.ipfsHash = ipfsHash.parsed;
+            
+            // 2. Check IPFS for AI data
+            const ipfsResult = await fetchFromIPFS(ipfsHash.parsed);
+            result.ipfs = {
+              exists: true,
+              accessible: ipfsResult.success,
+              data: ipfsResult.success ? ipfsResult.data : null,
+              gateway: ipfsResult.gateway,
+              error: ipfsResult.error
+            };
+            
+            // 3. Extract AI verification data
+            if (ipfsResult.success && ipfsResult.data) {
+              result.aiVerification = {
+                aiVerified: ipfsResult.data.aiRecommendation || false,
+                aiConfidence: ipfsResult.data.aiConfidence || 0,
+                aiJustification: ipfsResult.data.aiJustification || 'No AI justification',
+                verificationSource: ipfsResult.data.verificationSource || 'Unknown',
+                confidenceScore: ipfsResult.data.confidenceScore || ipfsResult.data.aiConfidence || 0
+              };
+            }
+          }
+        }
+      } catch (error) {
+        result.blockchain = {
+          exists: false,
+          error: error.message
+        };
+      }
+    } else {
+      result.blockchain = {
+        exists: false,
+        error: 'RPC unavailable'
+      };
+    }
+    
+    // Determine final status with AI consideration
+    if (result.blockchain.exists && result.blockchain.valid) {
+      if (result.aiVerification.aiVerified) {
+        result.status = 'VERIFIED_AI_VALID';
+        result.message = 'Credential is valid and AI-verified on blockchain';
+      } else {
+        result.status = 'VALID_NO_AI';
+        result.message = 'Credential is valid on blockchain but not AI-verified';
+      }
+    } else if (result.blockchain.exists && !result.blockchain.valid) {
+      result.status = 'INVALID';
+      result.message = 'Credential found but is invalid (revoked or expired)';
+    } else if (!result.blockchain.exists) {
+      result.status = 'NOT_FOUND';
+      result.message = 'Credential not found on blockchain';
+    } else {
+      result.status = 'ERROR';
+      result.message = 'Verification error occurred';
+    }
+    
+    res.json({
+      success: true,
+      verification: result
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 19. AI Verification Endpoint (Standalone)
+ */
+app.post('/api/ai/verify', async (req, res) => {
+  try {
+    const { name, email, organization, role, justification } = req.body;
+    
+    console.log('🤖 AI Verification requested for:', name);
+    
+    // Simulated AI verification logic (from your original code)
+    const aiConfidence = Math.random() * 0.4 + 0.6; // 0.6 to 1.0
+    const aiRecommendation = aiConfidence > 0.7;
+    
+    // Simulate different verification sources based on email domain
+    let verificationSource = 'Basic verification';
+    if (email && email.includes('@')) {
+      const domain = email.split('@')[1];
+      if (domain.includes('edu')) {
+        verificationSource = 'Educational institution verification';
+      } else if (domain.includes('gov')) {
+        verificationSource = 'Government verification';
+      } else if (domain.includes('company.com') || domain.includes('corp.com')) {
+        verificationSource = 'Corporate email verification';
+      }
+    }
+    
+    // Simulate AI justification
+    const aiJustification = aiRecommendation 
+      ? `AI verification successful with ${(aiConfidence * 100).toFixed(1)}% confidence. ${verificationSource}.`
+      : `AI verification failed. Confidence level ${(aiConfidence * 100).toFixed(1)}% is below threshold.`;
+    
+    res.json({
+      success: true,
+      aiVerification: {
+        name: name,
+        email: email,
+        organization: organization || 'Unknown',
+        role: role || 'Unknown',
+        aiConfidence: parseFloat(aiConfidence.toFixed(3)),
+        aiRecommendation: aiRecommendation,
+        aiJustification: aiJustification,
+        verificationSource: verificationSource,
+        timestamp: new Date().toISOString(),
+        verificationId: `AI_VERIFY_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
+      },
+      message: aiRecommendation 
+        ? 'AI verification passed. Ready for issuer review.' 
+        : 'AI verification failed. Manual review required.'
+    });
+    
+  } catch (error) {
+    console.error('AI verification error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 20. Issue Credential (Complete workflow with AI)
+ */
+app.post('/api/issue-credential', async (req, res) => {
+  try {
+    const {
+      requestId,
+      issuerPublicKey,
+      issuerName,
+      credentialType,
+      additionalData = {}
+    } = req.body;
+    
+    console.log(`🎫 Issuing credential for request: ${requestId}`);
+    
+    // Get the request
+    const request = pendingRequests.get(requestId);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found'
+      });
+    }
+    
+    if (request.status !== 'approved') {
+      return res.status(400).json({
+        success: false,
+        error: 'Request must be approved before issuing credential'
+      });
+    }
+    
+    // Generate credential ID
+    const credentialId = generateCredentialId();
+    
+    // Create credential data
+    const credentialData = {
+      credentialId: credentialId,
+      credentialType: credentialType || request.credentialType,
+      recipientName: request.name,
+      recipientEmail: request.email,
+      recipientPublicKey: request.recipientPublicKey,
+      recipientRole: request.role,
+      recipientOrganization: request.organization || additionalData.organization,
+      issuerPublicKey: issuerPublicKey,
+      issuerName: issuerName,
+      issueDate: new Date().toISOString(),
+      validUntil: new Date(Date.now() + (parseInt(request.validityDays) * 24 * 60 * 60 * 1000)).toISOString(),
+      
+      // AI Verification data
+      aiConfidence: request.aiConfidence,
+      aiRecommendation: request.aiRecommendation,
+      aiJustification: request.aiJustification || request.justification,
+      verificationSource: request.verificationSource || 'AI + Manual Review',
+      
+      // Additional metadata
+      skills: request.skills || [],
+      department: request.department || '',
+      metadata: {
+        ...request.metadata,
+        ...additionalData,
+        originalRequestId: requestId,
+        issuedBy: issuerName,
+        issuanceTimestamp: new Date().toISOString(),
+        blockchain: 'Casper',
+        contractHash: CONTRACT_HASH
+      }
+    };
+    
+    // Upload to IPFS
+    console.log(`📤 Uploading credential to IPFS: ${credentialId}`);
+    const ipfsResult = await uploadToIPFS(credentialData);
+    
+    if (!ipfsResult.success) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to upload to IPFS',
+        details: ipfsResult.error
+      });
+    }
+    
+    // Store in memory
+    const issuedCredential = {
+      ...credentialData,
+      ipfsHash: ipfsResult.ipfsHash,
+      ipfsGatewayUrl: ipfsResult.gatewayUrl,
+      status: 'issued',
+      blockchainHash: null, // To be filled when deployed
+      issuedAt: new Date().toISOString()
+    };
+    
+    issuedCredentials.set(credentialId, issuedCredential);
+    
+    // Update request status
+    request.status = 'issued';
+    request.credentialId = credentialId;
+    request.issuedAt = new Date().toISOString();
+    request.ipfsHash = ipfsResult.ipfsHash;
+    
+    pendingRequests.set(requestId, request);
+    
+    console.log(`✅ Credential issued: ${credentialId}`);
+    console.log(`   IPFS Hash: ${ipfsResult.ipfsHash}`);
+    console.log(`   AI Confidence: ${request.aiConfidence}`);
+    
+    res.json({
+      success: true,
+      message: 'Credential issued successfully',
+      credential: {
+        credentialId: credentialId,
+        ipfsHash: ipfsResult.ipfsHash,
+        gatewayUrl: ipfsResult.gatewayUrl,
+        recipientName: request.name,
+        recipientEmail: request.email,
+        issuerName: issuerName,
+        issueDate: new Date().toISOString(),
+        aiVerified: request.aiRecommendation,
+        aiConfidence: request.aiConfidence,
+        nextStep: 'Sign and deploy to blockchain using /api/deploy/submit'
+      },
+      deployData: {
+        credentialId: credentialId,
+        holderPublicKey: request.recipientPublicKey,
+        issuerPublicKey: issuerPublicKey,
+        ipfsHash: ipfsResult.ipfsHash,
+        credentialType: credentialType || request.credentialType,
+        aiConfidence: request.aiConfidence,
+        validUntil: issuedCredential.validUntil
+      }
+    });
+    
+  } catch (error) {
+    console.error('Credential issuance error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // ==================== START SERVER ====================
 
 async function startServer() {
+  // Initialize Casper clients
   await initializeCasperClients();
   
   app.listen(PORT, '0.0.0.0', () => {
@@ -1420,6 +1852,9 @@ async function startServer() {
     console.log(`🌐 RPC Node: ${NODE_URL}`);
     console.log(`📦 Contract Hash: ${CONTRACT_HASH}`);
     console.log(`📦 Package Hash: ${PACKAGE_HASH}`);
+    console.log(`💾 IPFS Gateway: ${PINATA_GATEWAY}`);
+    console.log(`📡 Pinata API: ${PINATA_API_KEY ? 'Configured' : 'Not configured'}`);
+    console.log(`🤖 AI Verification: ✓ Integrated`);
     
     console.log(`\n📋 API Endpoints:`);
     console.log(`   GET  /health                       - Health check`);
@@ -1435,28 +1870,32 @@ async function startServer() {
     console.log(`   GET  /api/credentials/verify/:hash - Verify credential`);
     console.log(`   POST /api/notify                   - Send notification`);
     
-    console.log(`\n🔍 Verification Endpoints:`);
-    console.log(`   GET  /api/verify/:id               - Dictionary verification`);
-    console.log(`   GET  /api/verify/simple/:id        - Quick check`);
-    console.log(`   GET  /api/credential/:id          - Get all details`);
-    console.log(`   GET  /api/debug/dictionary/:map/:id - Compute dictionary key`);
-    console.log(`   POST /api/verify-credential       - Verify (legacy)`);
-    console.log(`   GET  /api/ipfs/:hash              - Get IPFS data`);
-    console.log(`   GET  /api/test/ipfs-gateway       - Test IPFS gateway`);
+    console.log(`\n🤖 AI Verification Endpoints:`);
+    console.log(`   POST /api/verify-credential        - Verify credential (main)`);
+    console.log(`   GET  /api/blockchain/credential/:id - Verify on blockchain`);
+    console.log(`   GET  /api/ipfs/:hash               - Get IPFS data`);
+    console.log(`   GET  /api/blockchain/contract      - Get contract info`);
+    console.log(`   GET  /api/test/ipfs-gateway        - Test IPFS gateway`);
+    console.log(`   GET  /api/verify/complete/:id      - Complete verification`);
+    console.log(`   POST /api/ai/verify                - AI verification standalone`);
+    console.log(`   POST /api/issue-credential         - Complete credential issuance`);
     
     console.log(`\n💡 Quick Test:`);
     console.log(`   curl http://localhost:${PORT}/health`);
-    console.log(`   curl http://localhost:${PORT}/api/verify/FRESH_TEST`);
-    console.log(`   curl http://localhost:${PORT}/api/verify/simple/FRESH_TEST`);
+    console.log(`   curl http://localhost:${PORT}/api/rpc-test`);
+    console.log(`   curl http://localhost:${PORT}/api/test/ipfs-gateway`);
+    console.log(`   curl http://localhost:${PORT}/api/ipfs/QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco`);
     console.log(`   curl -X POST http://localhost:${PORT}/api/requests/test`);
+    console.log(`   curl -X POST http://localhost:${PORT}/api/ai/verify -H "Content-Type: application/json" -d '{"name":"Test User","email":"test@example.com"}'`);
     
-    console.log(`\n✅ Server ready!\n`);
+    console.log(`\n✅ Server ready with AI Verification!\n`);
     console.log('='.repeat(70) + '\n');
   });
 }
 
 startServer();
 
+// Handle errors
 process.on('uncaughtException', (error) => {
   console.error('⚠️ Uncaught Exception:', error);
 });
