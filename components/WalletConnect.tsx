@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { walletManager, checkWalletAvailability } from '@/lib/wallet';
+import { walletManager, checkWalletAvailability } from '../lib/wallet';
 
 interface WalletConnectProps {
   onConnect?: () => void;  // Add this prop

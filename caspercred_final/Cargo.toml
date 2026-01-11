@@ -1,21 +1,28 @@
+# CasperCredIQ - Fixed Cargo.toml for Odra 2.4.0
+# Location: ~/caspercred_final/Cargo.toml
+
 [package]
 name = "caspercred_final"
 version = "0.1.0"
 edition = "2021"
 
+# ✅ CRITICAL FIX: Odra 2.4.0 doesn't use feature flags
+# Remove features = ["casper"] - it doesn't exist in 2.4.0
 [dependencies]
-odra = { version = "2.4.0", features = [], default-features = false }
+odra = { version = "2.4.0", default-features = false }
 
 [dev-dependencies]
-odra-test = { version = "2.4.0", features = [], default-features = false }
+odra-test = { version = "2.4.0", default-features = false }
 
 [build-dependencies]
-odra-build = { version = "2.4.0", features = [], default-features = false }
+odra-build = { version = "2.4.0", default-features = false }
 
+# These dependencies are needed for build process
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-odra-build = { version = "2.4.0", features = [], default-features = false }
-odra-cli = { version = "2.4.0", features = [], default-features = false }
+odra-build = { version = "2.4.0", default-features = false }
+odra-cli = { version = "2.4.0", default-features = false }
 
+# Binary targets for Odra build system
 [[bin]]
 name = "caspercred_final_build_contract"
 path = "bin/build_contract.rs"
@@ -31,9 +38,11 @@ name = "caspercred_final_cli"
 path = "bin/cli.rs"
 test = false
 
+# Optimize for small WASM size (important for gas costs)
 [profile.release]
 codegen-units = 1
 lto = true
+opt-level = 'z'
 
 [profile.dev.package."*"]
 opt-level = 3

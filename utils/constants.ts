@@ -2,110 +2,68 @@ export const CASPER_CONFIG = {
   NODE_URL: 'http://65.109.83.79:7777',
   CHAIN_NAME: 'casper-test',
   
- 
-  CONTRACT_HASH: 'afd7ca51f8ab1d415b7abf2439074924bd486ad12f0babfdf539e891ef6c4a1a',
-  
- 
-  PACKAGE_HASH: '8d40e74549c7f2e62b483e000009312a568bc1830e5090299ea55aa4f3317306',
-  
- 
-  ACCESS_TOKEN: 'uref-7af0043890b07bf0104bc145ddb18c025875ae457d6d2ac3e8a27297b85d7f74-007',
+  // CasperCredIQ MVP Contract
+  CONTRACT_HASH: '971986539f375a9c7da1879177f11c5fa8b0a28f50ae61e93480a3522ce347c7',
+  PACKAGE_HASH: '32f170fbb5a6410270a1fe0d89bcb060d9f8291a4a70a9d3dda3159f21565a35',
   
   PAYMENT_AMOUNTS: {
-    MINT: 5000000000,           // 5 CSPR - mint credential
-    REVOKE: 3000000000,          // 3 CSPR - revoke credential
-    ADD_ISSUER: 3000000000,      // 3 CSPR - add new issuer (NEW)
-    REMOVE_ISSUER: 3000000000,   // 3 CSPR - remove issuer (NEW)
-    TRANSFER_OWNERSHIP: 3000000000, // 3 CSPR - transfer ownership (NEW)
-    
-    GET_ROLE: 3000000000,        // 3 CSPR - get credential role
-    GET_EXPIRY: 3000000000,      // 3 CSPR - get expiry timestamp
-    IS_VALID: 3000000000,        // 3 CSPR - check if valid
-    IS_REVOKED: 3000000000,      // 3 CSPR - check if revoked
-    IS_ISSUER: 3000000000,       // 3 CSPR - check if address is issuer (NEW)
-    GET_OWNER: 3000000000,       // 3 CSPR - get contract owner (NEW)
+    ISSUE_CREDENTIAL: 5000000000,      // 5 CSPR
+    REVOKE_CREDENTIAL: 3000000000,     // 3 CSPR
+    SET_ACCESS_LEVEL: 3000000000,      // 3 CSPR
+    QUERY: 3000000000,                 // 3 CSPR - for any read operation
   },
   
   NETWORK: {
     EXPLORER_URL: 'https://testnet.cspr.live',
-    ACCOUNT_URL: (accountHash: string) => 
-      `https://testnet.cspr.live/account/${accountHash}`,
-    DEPLOY_URL: (deployHash: string) => 
-      `https://testnet.cspr.live/deploy/${deployHash}`,
+    DEPLOY_URL: (deployHash: string) => `https://testnet.cspr.live/deploy/${deployHash}`,
   },
 };
 
-// Helper constants for easier usage
+// Helper constants
 export const CONTRACT_HASH = `hash-${CASPER_CONFIG.CONTRACT_HASH}`;
-export const CONTRACT_HASH_WITH_PREFIX = `contract-${CASPER_CONFIG.CONTRACT_HASH}`;
-export const CONTRACT_PACKAGE_HASH = `hash-${CASPER_CONFIG.PACKAGE_HASH}`;
-export const CASPER_RPC_URL = CASPER_CONFIG.NODE_URL;
+export const CONTRACT_HASH_PREFIXED = `contract-${CASPER_CONFIG.CONTRACT_HASH}`;
+export const PACKAGE_HASH = `hash-${CASPER_CONFIG.PACKAGE_HASH}`;
 
-// Entry point names (for reference)
+// Entry points
 export const ENTRY_POINTS = {
-  // Write functions (issuer/owner only)
-  MINT: 'mint',
-  REVOKE: 'revoke',
-  ADD_ISSUER: 'add_issuer',           // NEW - owner only
-  REMOVE_ISSUER: 'remove_issuer',     // NEW - owner only
-  TRANSFER_OWNERSHIP: 'transfer_ownership', // NEW - owner only
-  
-  // Read functions (anyone can call)
-  IS_VALID: 'is_valid',
-  IS_REVOKED: 'is_revoked',
-  GET_ROLE: 'get_role',
+  ISSUE_CREDENTIAL: 'issue_credential',
+  REVOKE_CREDENTIAL: 'revoke_credential',
+  SET_ACCESS_LEVEL: 'set_access_level',
+  VERIFY_CREDENTIAL: 'verify_credential',
+  GET_HOLDER: 'get_holder',
+  GET_ISSUER: 'get_issuer',
+  GET_CONFIDENCE: 'get_confidence',
+  GET_IPFS_HASH: 'get_ipfs_hash',
   GET_EXPIRY: 'get_expiry',
-  GET_OWNER: 'get_owner',             // NEW
-  IS_ISSUER: 'is_issuer',             // NEW
+  IS_REVOKED: 'is_revoked',
+  GET_OWNER: 'get_owner',
+  GET_ACCESS_LEVEL: 'get_access_level',
 } as const;
 
-// Parameter names for contract calls
-export const PARAM_NAMES = {
-  USER: 'user',
-  ADDRESS: 'address',
-  ROLE: 'role',
-  TTL_SECONDS: 'ttl_seconds',
-  ISSUER: 'issuer',
-  NEW_OWNER: 'new_owner',
+// Access levels
+export const ACCESS_LEVELS = {
+  NO_ACCESS: 0,
+  VIEWER: 1,
+  ISSUER: 2,
+  ADMIN: 3,
+  SUPER_ADMIN: 4,
 } as const;
 
-// ⚠️ IMPORTANT: TTL is now in MILLISECONDS, not seconds!
-// The contract bug: expires_at = now + ttl_seconds (but now is in ms)
-// Workaround: Pass milliseconds instead
-export const TTL_PRESETS = {
-  ONE_HOUR: 3600000,       // 1 hour = 3,600,000 ms
-  ONE_DAY: 86400000,       // 1 day = 86,400,000 ms
-  ONE_WEEK: 604800000,     // 1 week = 604,800,000 ms
-  ONE_MONTH: 2592000000,   // 30 days = 2,592,000,000 ms
-  ONE_YEAR: 31536000000,   // 365 days = 31,536,000,000 ms
+// Time presets (in days)
+export const EXPIRY_DAYS = {
+  ONE_WEEK: 7,
+  ONE_MONTH: 30,
+  SIX_MONTHS: 180,
+  ONE_YEAR: 365,
 } as const;
 
-// Contract owner and deployer account
-export const DEPLOYER_ACCOUNT = 'account-hash-7206cdf544f85aecaa8a156487c8d8598ec68841a3a1c75570753497aabc0d26';
-
-// Type definitions for better TypeScript support
-export type EntryPoint = typeof ENTRY_POINTS[keyof typeof ENTRY_POINTS];
-export type ParamName = typeof PARAM_NAMES[keyof typeof PARAM_NAMES];
-
-// Credential structure (matches on-chain format)
+// Types
 export interface Credential {
-  role: string;
-  issued_at: number;      // Unix timestamp in milliseconds
-  expires_at: number;     // Unix timestamp in milliseconds
+  credential_id: string;
+  holder: string;
+  issuer: string;
+  ai_confidence: number;
+  ipfs_hash: string;
+  expires_at: number;
   revoked: boolean;
-  issuer: string;         // Account hash of who issued it
-}
-
-// API response types
-export interface MintResponse {
-  deployHash: string;
-  user: string;
-  role: string;
-  expiresAt: number;
-}
-
-export interface CredentialQueryResponse {
-  exists: boolean;
-  credential?: Credential;
-  isValid?: boolean;
 }

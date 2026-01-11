@@ -1,139 +1,123 @@
-'use client';
+"use client"
 
-import { Shield, Package } from 'lucide-react';
+import { Building2, GraduationCap, Scale, Users } from "lucide-react"
 
-const ROLE_RESOURCES = {
-  student: {
-    name: 'Student',
-    color: 'indigo',
-    icon: '🎓',
+const ORGANIZATION_ROLES = {
+  enterprises: {
+    name: "Enterprises",
+    description: "Large corporations",
+    color: "from-sky-200 to-cyan-200",
+    icon: Building2,
     resources: [
-      { name: 'Learning Materials', description: 'Download lectures and notes', icon: '📄' },
-      { name: 'Assignments', description: 'Submit homework and projects', icon: '✏️' },
-      { name: 'Grades & Feedback', description: 'View performance and instructor comments', icon: '📊' }
-    ]
+      { name: "Team Mgmt", description: "Manage teams" },
+      { name: "Compliance", description: "Meet regulations" },
+      { name: "Analytics", description: "Track KPIs" },
+      { name: "Multi-tenant", description: "Multiple divisions" },
+    ],
   },
-  employee: {
-    name: 'Employee',
-    color: 'blue',
-    icon: '💼',
+  educational: {
+    name: "Education",
+    description: "Schools & universities",
+    color: "from-purple-200 to-pink-200",
+    icon: GraduationCap,
     resources: [
-      { name: 'Task Management', description: 'View and update assigned tasks', icon: '✅' },
-      { name: 'Time Tracking', description: 'Log hours and attendance', icon: '⏰' },
-      { name: 'Payroll Access', description: 'View salary and benefits', icon: '💰' }
-    ]
+      { name: "Courses", description: "Manage courses" },
+      { name: "Students", description: "Track progress" },
+      { name: "Assessments", description: "Grading tools" },
+      { name: "Research", description: "Collaboration" },
+    ],
   },
-  faculty: {
-    name: 'Faculty/Professor',
-    color: 'purple',
-    icon: '🧑‍🏫',
+  government: {
+    name: "Government",
+    description: "Public sector",
+    color: "from-rose-200 to-orange-200",
+    icon: Scale,
     resources: [
-      { name: 'Course Creation', description: 'Design and publish new courses', icon: '➕' },
-      { name: 'Student Grading', description: 'Evaluate assignments and exams', icon: '📝' },
-      { name: 'Lecture Scheduling', description: 'Manage class timetables', icon: '🗓️' }
-    ]
+      { name: "Access", description: "Security control" },
+      { name: "Audit", description: "Activity logs" },
+      { name: "Docs", description: "File storage" },
+      { name: "Reports", description: "Compliance" },
+    ],
   },
-  researcher: {
-    name: 'Researcher',
-    color: 'green',
-    icon: '🔬',
+  professional: {
+    name: "Professional",
+    description: "Associations",
+    color: "from-emerald-200 to-teal-200",
+    icon: Users,
     resources: [
-      { name: 'Lab Access', description: 'Book equipment and facilities', icon: '🧪' },
-      { name: 'Data Analysis', description: 'Use advanced analytics tools', icon: '📈' },
-      { name: 'Publication Portal', description: 'Submit papers and reports', icon: '📄' }
-    ]
+      { name: "Members", description: "Member data" },
+      { name: "Certs", description: "Track licenses" },
+      { name: "Events", description: "Host meets" },
+      { name: "Knowledge", description: "Standards" },
+    ],
   },
-  administrator: {
-    name: 'Administrator',
-    color: 'red',
-    icon: '🛡️',
-    resources: [
-      { name: 'User Management', description: 'Add/remove users and roles', icon: '👥' },
-      { name: 'System Configuration', description: 'Update platform settings', icon: '⚙️' },
-      { name: 'Backup & Security', description: 'Manage data and access controls', icon: '🔒' }
-    ]
-  },
-  developer: {
-    name: 'Developer',
-    color: 'cyan',
-    icon: '💻',
-    resources: [
-      { name: 'Code Repository', description: 'Full access to source code', icon: '📁' },
-      { name: 'Testing Environment', description: 'Run tests and debug', icon: '🧪' },
-      { name: 'Deployment Tools', description: 'Push updates to production', icon: '🚀' }
-    ]
-  },
-  manager: {
-    name: 'Manager',
-    color: 'orange',
-    icon: '👔',
-    resources: [
-      { name: 'Team Oversight', description: 'Monitor team performance', icon: '👀' },
-      { name: 'Budget Control', description: 'Allocate resources', icon: '📊' },
-      { name: 'Meeting Scheduler', description: 'Organize team events', icon: '🗓️' }
-    ]
-  }
-};
+}
 
-const getRoleColorClasses = (color: string) => {
-  const gradients: Record<string, string> = {
-    indigo: 'from-indigo-500 to-indigo-700',
-    blue: 'from-blue-500 to-blue-700',
-    purple: 'from-purple-500 to-purple-700',
-    green: 'from-green-500 to-green-700',
-    red: 'from-red-500 to-red-700',
-    cyan: 'from-cyan-500 to-cyan-700',
-    orange: 'from-orange-500 to-orange-700',
-    gray: 'from-gray-500 to-gray-700',
-  };
-  return gradients[color] || 'from-gray-500 to-gray-700';
-};
-
-export default function RoleResources() {
+export default function OrganizationRoles() {
   return (
-    <div className="bg-gradient-to-br from-gray-50 to-gray-100 py-2 px-4">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-xl md:text-xl font-bold text-center mb-5 text-gray-800">
-          Role Permissions Overview
-        </h1>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-5">
-          {Object.entries(ROLE_RESOURCES).map(([key, role]) => (
-            <div
-              key={key}
-              className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden border border-gray-200 flex flex-col h-full"
-            >
-              {/* Header - reduced height */}
-              <div className={`bg-gradient-to-r ${getRoleColorClasses(role.color)} p-4 text-white`}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-lg">{role.icon}</div>
-                  <Shield className="w-6 h-6 opacity-70" />
-                </div>
-                <h3 className="text-sm font-bold">{role.name}</h3>
-                <p className="text-white/80 text-xs mt-1">{role.resources.length} Resources</p>
-              </div>
-
-              {/* Resources - compact list */}
-              <div className="p-3 space-y-2 flex-1">
-                {role.resources.map((resource, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-start gap-2 p-2 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors text-xs"
-                  >
-                    <div className="text-xl flex-shrink-0 mt-0.5">{resource.icon}</div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-gray-800 truncate">{resource.name}</h4>
-                      <p className="text-gray-600 line-clamp-2 text-xs mt-0.5">{resource.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+    <div className="py-8 px-3">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-semibold mb-2">
+            Organization Role Resources
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Tools by organization type
+          </p>
         </div>
 
-   
+        {/* Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+          {Object.entries(ORGANIZATION_ROLES).map(([key, org]) => {
+            const Icon = org.icon
+            return (
+              <div
+                key={key}
+                className="rounded-md border bg-card shadow-sm
+                           hover:shadow transition-all overflow-hidden"
+              >
+                {/* Top */}
+                <div className={`bg-gradient-to-br ${org.color} p-3`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="p-1.5 bg-white/70 rounded">
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="text-[9px] px-1.5 py-0.5 bg-white/60 rounded-full">
+                      {org.resources.length}
+                    </div>
+                  </div>
+                  <h2 className="text-sm font-semibold leading-tight">
+                    {org.name}
+                  </h2>
+                  <p className="text-[10px] text-slate-600 leading-snug">
+                    {org.description}
+                  </p>
+                </div>
+
+                {/* Resources */}
+                <div className="p-3">
+                  <div className="space-y-2">
+                    {org.resources.map((r, i) => (
+                      <div key={i} className="flex gap-2">
+                        <div className="w-1 h-1 rounded-full bg-accent mt-1.5" />
+                        <div>
+                          <p className="text-[11px] font-medium leading-tight">
+                            {r.name}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground leading-tight">
+                            {r.description}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
-  );
+  )
 }

@@ -27,7 +27,7 @@ import {
   Check,
 } from "lucide-react"
 import Link from "next/link"
-import WalletConnect from "@/components/WalletConnect"
+import WalletConnect from "../components/WalletConnect"
 import { useRouter } from "next/navigation"
 
 // Custom Button Component
@@ -87,7 +87,7 @@ const CardContent = ({ children, className = "" }) => {
 
 // Contract Hash Component
 const ContractHashDisplay = () => {
-  const contractHash = "afd7ca51f8ab1d415b7abf2439074924bd486ad12f0babfdf539e891ef6c4a1a";
+  const contractHash = "971986539f375a9c7da1879177f11c5fa8b0a28f50ae61e93480a3522ce347c7";
   const [copied, setCopied] = useState(false);
 
   const copyToClipboard = () => {
@@ -617,14 +617,7 @@ export default function LandingPage() {
               </ul>
             </div>
             
-            <div>
-              <h4 className="text-white font-semibold mb-4">Resources</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="https://github.com/ritigya03/CasperCredIQ" target="_blank" className="hover:text-white transition-colors">GitHub Repository</a></li>
-                <li><a href="https://docs.casper.network/" target="_blank" className="hover:text-white transition-colors">Casper Documentation</a></li>
-                <li><a href="https://cspr.live/" target="_blank" className="hover:text-white transition-colors">Casper Explorer</a></li>
-              </ul>
-            </div>
+            
             
             <div>
               <h4 className="text-white font-semibold mb-4">Use Cases</h4>

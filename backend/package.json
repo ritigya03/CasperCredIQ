@@ -11,11 +11,21 @@
     "dev": "node server.js"
   },
   "dependencies": {
+    "axios": "^1.13.2",
     "blake2b": "^2.1.4",
+    "blakejs": "^1.2.1",
     "body-parser": "^1.20.2",
     "casper-js-sdk": "^2.15.7",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^4.22.1",
+    "form-data": "^4.0.5",
+    "multer": "^2.0.2",
     "node-fetch": "^2.7.0"
-  }
+  },
+  "description": "",
+  "main": "server.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

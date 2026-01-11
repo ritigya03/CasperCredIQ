@@ -1,7 +1,7 @@
 'use client';
 
 import { CLPublicKey } from 'casper-js-sdk';
-import { CASPER_CONFIG } from '@/utils/constants';
+import { CASPER_CONFIG } from '../utils/constants';
 
 // Get API URL from environment variable
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';

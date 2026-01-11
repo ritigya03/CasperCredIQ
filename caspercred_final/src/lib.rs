@@ -3,258 +3,241 @@
 extern crate alloc;
 
 use alloc::string::String;
-use alloc::vec::Vec;
+// Removed unused Vec import
 
 use odra::prelude::*;
-use odra::casper_types::{
-    bytesrepr::{FromBytes, ToBytes, Error as BytesError},
-    CLType, CLTyped,
-};
 
-/// Credential stored on-chain
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Credential {
-    pub role: String,
-    pub issued_at: u64,
-    pub expires_at: u64,
-    pub revoked: bool,
-    pub issuer: Address,  // Track who issued it
-}
+// ================ EVENTS ================
 
-impl CLTyped for Credential {
-    fn cl_type() -> CLType {
-        CLType::Any
-    }
-}
-
-impl ToBytes for Credential {
-    fn to_bytes(&self) -> Result<Vec<u8>, BytesError> {
-        let mut bytes = Vec::new();
-        bytes.extend(self.role.to_bytes()?);
-        bytes.extend(self.issued_at.to_bytes()?);
-        bytes.extend(self.expires_at.to_bytes()?);
-        bytes.extend(self.revoked.to_bytes()?);
-        bytes.extend(self.issuer.to_bytes()?);
-        Ok(bytes)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.role.serialized_length()
-            + self.issued_at.serialized_length()
-            + self.expires_at.serialized_length()
-            + self.revoked.serialized_length()
-            + self.issuer.serialized_length()
-    }
-}
-
-impl FromBytes for Credential {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), BytesError> {
-        let (role, rem) = String::from_bytes(bytes)?;
-        let (issued_at, rem) = u64::from_bytes(rem)?;
-        let (expires_at, rem) = u64::from_bytes(rem)?;
-        let (revoked, rem) = bool::from_bytes(rem)?;
-        let (issuer, rem) = Address::from_bytes(rem)?;
-
-        Ok((
-            Credential {
-                role,
-                issued_at,
-                expires_at,
-                revoked,
-                issuer,
-            },
-            rem,
-        ))
-    }
-}
-
-/// Events
 #[odra::event]
 pub struct CredentialIssued {
-    pub user: Address,
-    pub role: String,
-    pub expires_at: u64,
+    pub credential_id: String,
+    pub holder: Address,
     pub issuer: Address,
+    pub ai_confidence: u8,
 }
 
 #[odra::event]
 pub struct CredentialRevoked {
-    pub user: Address,
-    pub issuer: Address,
+    pub credential_id: String,
+    pub revoked_by: Address,
 }
 
-#[odra::event]
-pub struct IssuerAdded {
-    pub issuer: Address,
-    pub added_by: Address,
-}
+// ================ ERRORS ================
 
-#[odra::event]
-pub struct IssuerRemoved {
-    pub issuer: Address,
-    pub removed_by: Address,
-}
-
-/// Errors
 #[odra::odra_error]
 pub enum Error {
+    NotOwner = 0,
     NotAuthorized = 1,
-    NotIssued = 2,
-    NotOwner = 3,
-    AlreadyIssuer = 4,
-    NotAnIssuer = 5,
+    CredentialNotFound = 2,
+    AlreadyExists = 3,
+    InvalidInput = 4,
 }
 
-/// Multi-Issuer Credential Contract
+// ================ MAIN CONTRACT ================
+
 #[odra::module]
-pub struct CasperCred {
-    /// Contract owner (deployer)
+pub struct CasperCredIQ {
+    // Contract owner
     owner: Var<Address>,
     
-    /// Authorized issuers (address => is_active)
-    issuers: Mapping<Address, bool>,
+    // credential_id -> holder address
+    cred_holder: Mapping<String, Address>,
     
-    /// user_address → Credential
-    credentials: Mapping<Address, Credential>,
+    // credential_id -> issuer address  
+    cred_issuer: Mapping<String, Address>,
+    
+    // credential_id -> AI confidence score (0-100)
+    cred_confidence: Mapping<String, u8>,
+    
+    // credential_id -> expiry timestamp
+    cred_expires: Mapping<String, u64>,
+    
+    // credential_id -> revoked status
+    cred_revoked: Mapping<String, bool>,
+    
+    // credential_id -> IPFS hash
+    cred_ipfs: Mapping<String, String>,
+    
+    // address -> access level (0-4)
+    access_level: Mapping<Address, u8>,
 }
 
 #[odra::module]
-impl CasperCred {
-    /// Initialize contract - deployer becomes owner and first issuer
-    /// This is called automatically by Odra during deployment
+impl CasperCredIQ {
+    /// Initialize contract - deployer becomes owner
     pub fn init(&mut self) {
-        let caller = self.env().caller();
-        self.owner.set(caller);
-        self.issuers.set(&caller, true);
+        let deployer = self.env().caller();
+        self.owner.set(deployer);
+        // Owner gets level 4 (super admin)
+        self.access_level.set(&deployer, 4);
     }
 
-    // ---------------- OWNER FUNCTIONS ----------------
+    // ================ OWNER FUNCTIONS ================
 
-    /// Add a new issuer (owner only)
-    pub fn add_issuer(&mut self, issuer: Address) {
-        self.ensure_owner();
-        
-        if self.issuers.get(&issuer).unwrap_or(false) {
-            self.env().revert(Error::AlreadyIssuer);
-        }
-        
-        self.issuers.set(&issuer, true);
-        
-        self.env().emit_event(IssuerAdded {
-            issuer,
-            added_by: self.env().caller(),
-        });
-    }
-
-    /// Remove an issuer (owner only)
-    pub fn remove_issuer(&mut self, issuer: Address) {
-        self.ensure_owner();
-        
-        if !self.issuers.get(&issuer).unwrap_or(false) {
-            self.env().revert(Error::NotAnIssuer);
-        }
-        
-        self.issuers.set(&issuer, false);
-        
-        self.env().emit_event(IssuerRemoved {
-            issuer,
-            removed_by: self.env().caller(),
-        });
-    }
-
-    /// Transfer ownership (owner only)
-    pub fn transfer_ownership(&mut self, new_owner: Address) {
-        self.ensure_owner();
-        self.owner.set(new_owner);
-    }
-
-    // ---------------- INTERNAL ----------------
-
-    fn ensure_owner(&self) {
-        let owner = self.owner.get().unwrap();
-        if self.env().caller() != owner {
+    /// Set access level for an address (owner only)
+    pub fn set_access_level(&mut self, user: Address, level: u8) {
+        // Only owner can set access levels
+        if self.env().caller() != self.owner.get().unwrap() {
             self.env().revert(Error::NotOwner);
         }
+        
+        // Level must be 0-4
+        if level > 4 {
+            self.env().revert(Error::InvalidInput);
+        }
+        
+        self.access_level.set(&user, level);
     }
 
-    fn ensure_issuer(&self) {
+    // ================ CREDENTIAL FUNCTIONS ================
+
+    /// Issue a new credential (requires level 2+)
+    pub fn issue_credential(
+        &mut self,
+        credential_id: String,
+        holder: Address,
+        ipfs_hash: String,
+        ai_confidence: u8,
+        expires_in_days: u64,
+    ) {
         let caller = self.env().caller();
-        if !self.issuers.get(&caller).unwrap_or(false) {
+        
+        // Check caller has at least issuer level (2)
+        let caller_level = self.access_level.get(&caller).unwrap_or(0);
+        if caller_level < 2 && caller != self.owner.get().unwrap() {
             self.env().revert(Error::NotAuthorized);
         }
-    }
-
-    // ---------------- ISSUER ACTIONS ----------------
-
-    /// Mint or re-issue a credential (any authorized issuer)
-    pub fn mint(&mut self, user: Address, role: String, ttl_seconds: u64) {
-        self.ensure_issuer();
-
-        let now = self.env().get_block_time();
-        let issuer = self.env().caller();
-
-        let credential = Credential {
-            role: role.clone(),
-            issued_at: now,
-            expires_at: now + ttl_seconds,
-            revoked: false,
-            issuer,
-        };
-
-        self.credentials.set(&user, credential);
-
+        
+        // Validate AI confidence
+        if ai_confidence > 100 {
+            self.env().revert(Error::InvalidInput);
+        }
+        
+        // Validate IPFS hash
+        if ipfs_hash.len() < 10 {
+            self.env().revert(Error::InvalidInput);
+        }
+        
+        // Check if credential ID already exists
+        if self.cred_holder.get(&credential_id).is_some() {
+            self.env().revert(Error::AlreadyExists);
+        }
+        
+        // Calculate expiry timestamp
+        let current_time = self.env().get_block_time();
+        let expires_at = current_time + (expires_in_days * 24 * 60 * 60 * 1000);
+        
+        // Store credential data
+        self.cred_holder.set(&credential_id, holder);
+        self.cred_issuer.set(&credential_id, caller);
+        self.cred_confidence.set(&credential_id, ai_confidence);
+        self.cred_expires.set(&credential_id, expires_at);
+        self.cred_revoked.set(&credential_id, false);
+        self.cred_ipfs.set(&credential_id, ipfs_hash);
+        
         self.env().emit_event(CredentialIssued {
-            user,
-            role,
-            expires_at: now + ttl_seconds,
-            issuer,
+            credential_id,
+            holder,
+            issuer: caller,
+            ai_confidence,
         });
     }
 
-    /// Revoke credential (any authorized issuer)
-    pub fn revoke(&mut self, user: Address) {
-        self.ensure_issuer();
-
-        let mut credential = self
-            .credentials
-            .get(&user)
-            .unwrap_or_else(|| self.env().revert(Error::NotIssued));
-
-        credential.revoked = true;
-        self.credentials.set(&user, credential);
-
-        self.env().emit_event(CredentialRevoked { 
-            user,
-            issuer: self.env().caller(),
+    /// Revoke a credential (issuer or owner only)
+    pub fn revoke_credential(&mut self, credential_id: String) {
+        let caller = self.env().caller();
+        
+        // Get credential issuer
+        let issuer = match self.cred_issuer.get(&credential_id) {
+            Some(i) => i,
+            None => self.env().revert(Error::CredentialNotFound),
+        };
+        
+        let owner = self.owner.get().unwrap();
+        
+        // Check permissions: issuer or owner can revoke
+        if caller != issuer && caller != owner {
+            self.env().revert(Error::NotAuthorized);
+        }
+        
+        // Mark as revoked
+        self.cred_revoked.set(&credential_id, true);
+        
+        self.env().emit_event(CredentialRevoked {
+            credential_id,
+            revoked_by: caller,
         });
     }
 
-    // ---------------- READ ONLY ----------------
+    // ================ VIEW FUNCTIONS ================
 
-    /// Check if credential is valid (not revoked and not expired)
-    pub fn is_valid(&self, user: Address) -> bool {
-        match self.credentials.get(&user) {
-            Some(c) => !c.revoked && self.env().get_block_time() < c.expires_at,
-            None => false,
+    /// Verify if credential is valid (public)
+    pub fn verify_credential(&self, credential_id: String) -> bool {
+        // Check if exists
+        if self.cred_holder.get(&credential_id).is_none() {
+            return false;
         }
-    }
-
-    /// Check if credential is revoked
-    pub fn is_revoked(&self, user: Address) -> bool {
-        match self.credentials.get(&user) {
-            Some(c) => c.revoked,
-            None => false,
+        
+        // Check if revoked
+        if self.cred_revoked.get(&credential_id).unwrap_or(false) {
+            return false;
         }
+        
+        // Check if expired
+        let expires_at = match self.cred_expires.get(&credential_id) {
+            Some(e) => e,
+            None => return false,
+        };
+        
+        let current_time = self.env().get_block_time();
+        current_time < expires_at
     }
 
-    /// Get credential role
-    pub fn get_role(&self, user: Address) -> Option<String> {
-        self.credentials.get(&user).map(|c| c.role.clone())
+    /// Get credential holder (public)
+    pub fn get_holder(&self, credential_id: String) -> Option<Address> {
+        self.cred_holder.get(&credential_id)
     }
 
-    /// Get credential expiry timestamp
-    pub fn get_expiry(&self, user: Address) -> Option<u64> {
-        self.credentials.get(&user).map(|c| c.expires_at)
+    /// Get credential issuer (public)
+    pub fn get_issuer(&self, credential_id: String) -> Option<Address> {
+        self.cred_issuer.get(&credential_id)
+    }
+
+    /// Get AI confidence score (with access control)
+    pub fn get_confidence(&self, credential_id: String) -> Option<u8> {
+        // Check if caller has permission
+        if !self.can_view_credential(&credential_id) {
+            return None;
+        }
+        self.cred_confidence.get(&credential_id)
+    }
+
+    /// Get IPFS hash (with access control)
+    pub fn get_ipfs_hash(&self, credential_id: String) -> Option<String> {
+        // Check if caller has permission
+        if !self.can_view_credential(&credential_id) {
+            return None;
+        }
+        self.cred_ipfs.get(&credential_id)
+    }
+
+    /// Get expiry timestamp (with access control)
+    pub fn get_expiry(&self, credential_id: String) -> Option<u64> {
+        // Check if caller has permission
+        if !self.can_view_credential(&credential_id) {
+            return None;
+        }
+        self.cred_expires.get(&credential_id)
+    }
+
+    /// Check if credential is revoked (with access control)
+    pub fn is_revoked(&self, credential_id: String) -> Option<bool> {
+        // Check if caller has permission
+        if !self.can_view_credential(&credential_id) {
+            return None;
+        }
+        Some(self.cred_revoked.get(&credential_id).unwrap_or(false))
     }
 
     /// Get contract owner
@@ -262,9 +245,48 @@ impl CasperCred {
         self.owner.get().unwrap()
     }
 
-    /// Check if address is an authorized issuer
-    pub fn is_issuer(&self, address: Address) -> bool {
-        self.issuers.get(&address).unwrap_or(false)
+    /// Get access level for an address
+    pub fn get_access_level(&self, address: Address) -> u8 {
+        self.access_level.get(&address).unwrap_or(0)
+    }
+
+    // ================ INTERNAL HELPERS ================
+
+    /// Check if caller can view credential details
+    fn can_view_credential(&self, credential_id: &String) -> bool {
+        let caller = self.env().caller();
+        let owner = self.owner.get().unwrap();
+        
+        // Owner can view everything
+        if caller == owner {
+            return true;
+        }
+        
+        // Get credential holder
+        let holder = match self.cred_holder.get(credential_id) {
+            Some(h) => h,
+            None => return false,
+        };
+        
+        // Holder can view their own credentials
+        if caller == holder {
+            return true;
+        }
+        
+        // Get credential issuer
+        let issuer = match self.cred_issuer.get(credential_id) {
+            Some(i) => i,
+            None => return false,
+        };
+        
+        // Issuer can view credentials they issued
+        if caller == issuer {
+            return true;
+        }
+        
+        // Check access level
+        let caller_level = self.access_level.get(&caller).unwrap_or(0);
+        caller_level >= 1 // Level 1 (viewer) or higher
     }
 }
 
@@ -274,36 +296,111 @@ mod tests {
     use odra::host::{Deployer, NoArgs};
 
     #[test]
-    fn test_initialization() {
+    fn test_deploy() {
         let env = odra_test::env();
-        let owner = env.get_account(0);
+        let deployer = env.get_account(0);
         
-        env.set_caller(owner);
-        let contract = CasperCred::deploy(&env, NoArgs);
+        env.set_caller(deployer);
+        let contract = CasperCredIQ::deploy(&env, NoArgs);
         
-        assert_eq!(contract.get_owner(), owner);
-        assert!(contract.is_issuer(owner));
+        assert_eq!(contract.get_owner(), deployer);
+        assert_eq!(contract.get_access_level(deployer), 4);
     }
 
     #[test]
-    fn test_multi_issuer() {
+    fn test_issue_credential() {
         let env = odra_test::env();
-        let owner = env.get_account(0);
-        let issuer2 = env.get_account(1);
-        let user = env.get_account(2);
+        let deployer = env.get_account(0);
+        let employee = env.get_account(1);
         
-        env.set_caller(owner);
-        let mut contract = CasperCred::deploy(&env, NoArgs);
+        env.set_caller(deployer);
+        let mut contract = CasperCredIQ::deploy(&env, NoArgs);
         
-        // Add second issuer
-        contract.add_issuer(issuer2);
-        assert!(contract.is_issuer(issuer2));
+        // Issue credential
+        contract.issue_credential(
+            "EMP001".to_string(),
+            employee,
+            "QmTestHash1234567890".to_string(),
+            87,
+            365, // 1 year
+        );
         
-        // Second issuer can mint
-        env.set_caller(issuer2);
-        contract.mint(user, "developer".into(), 3600);
+        // Verify credential
+        assert!(contract.verify_credential("EMP001".to_string()));
         
-        assert!(contract.is_valid(user));
-        assert_eq!(contract.get_role(user), Some("developer".into()));
+        // Check holder
+        assert_eq!(contract.get_holder("EMP001".to_string()), Some(employee));
+        
+        // Check issuer
+        assert_eq!(contract.get_issuer("EMP001".to_string()), Some(deployer));
+        
+        // Owner can view AI confidence
+        env.set_caller(deployer);
+        assert_eq!(contract.get_confidence("EMP001".to_string()), Some(87));
+        
+        // Employee can view their own credential
+        env.set_caller(employee);
+        assert_eq!(contract.get_confidence("EMP001".to_string()), Some(87));
+    }
+
+    #[test]
+    fn test_revoke_credential() {
+        let env = odra_test::env();
+        let deployer = env.get_account(0);
+        let employee = env.get_account(1);
+        
+        env.set_caller(deployer);
+        let mut contract = CasperCredIQ::deploy(&env, NoArgs);
+        
+        contract.issue_credential(
+            "EMP002".to_string(),
+            employee,
+            "QmTestHash9876543210".to_string(),
+            92,
+            365,
+        );
+        
+        assert!(contract.verify_credential("EMP002".to_string()));
+        
+        // Revoke
+        contract.revoke_credential("EMP002".to_string());
+        
+        assert!(!contract.verify_credential("EMP002".to_string()));
+        
+        // Check revoked status
+        env.set_caller(deployer);
+        assert_eq!(contract.is_revoked("EMP002".to_string()), Some(true));
+    }
+
+    #[test]
+    fn test_access_control() {
+        let env = odra_test::env();
+        let deployer = env.get_account(0);
+        let viewer = env.get_account(1);
+        let employee = env.get_account(2);
+        
+        env.set_caller(deployer);
+        let mut contract = CasperCredIQ::deploy(&env, NoArgs);
+        
+        // Give viewer access level 1
+        contract.set_access_level(viewer, 1);
+        
+        // Issue credential
+        contract.issue_credential(
+            "EMP003".to_string(),
+            employee,
+            "QmTestHash123".to_string(),
+            75,
+            365,
+        );
+        
+        // Viewer can view (level 1)
+        env.set_caller(viewer);
+        assert!(contract.get_confidence("EMP003".to_string()).is_some());
+        
+        // Random address cannot view
+        let random = env.get_account(3);
+        env.set_caller(random);
+        assert!(contract.get_confidence("EMP003".to_string()).is_none());
     }
 }

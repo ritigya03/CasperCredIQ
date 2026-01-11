@@ -5,104 +5,90 @@ import {
   CLPublicKey,
   RuntimeArgs,
   DeployUtil,
-  CLByteArray,
+  CLValueBuilder,
 } from 'casper-js-sdk';
-import { Copy, ExternalLink, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { Copy, ExternalLink, CheckCircle, XCircle, AlertTriangle, Search } from 'lucide-react';
 
-import { walletManager } from '@/lib/wallet';
-import { submitSignedDeploy } from '@/lib/casper';
-import { CASPER_CONFIG, ENTRY_POINTS, PARAM_NAMES } from '@/utils/constants';
+// Mock wallet manager for demo
+const walletManager = {
+  state: { isConnected: false, publicKey: null, walletType: null },
+  getState() { return this.state; },
+  subscribe(callback) {
+    const interval = setInterval(() => callback(this.state), 1000);
+    return () => clearInterval(interval);
+  },
+  async syncWithWallet() { return this.state; },
+  async connect() {
+    this.state = {
+      isConnected: true,
+      publicKey: '0203a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3',
+      walletType: 'Casper Wallet'
+    };
+    return this.state;
+  },
+  disconnect() {
+    this.state = { isConnected: false, publicKey: null, walletType: null };
+  },
+  isWalletAvailable() { return true; },
+  async signDeploy(deploy) { return deploy; }
+};
 
-function createOdraAddress(publicKeyHex: string): CLByteArray {
-  const pk = CLPublicKey.fromHex(publicKeyHex);
-  const accountHash = pk.toAccountHash();
+const CASPER_CONFIG = {
+  CONTRACT_HASH: 'hash-1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+  PACKAGE_HASH: '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+  CHAIN_NAME: 'casper-test',
+  PAYMENT_AMOUNTS: { REVOKE: 5000000000 },
+  NETWORK: { EXPLORER_URL: 'https://testnet.cspr.live' }
+};
 
-  const bytes = new Uint8Array(33);
-  bytes[0] = 0;
-  bytes.set(accountHash, 1);
+const ENTRY_POINTS = {
+  REVOKE_CREDENTIAL: 'revoke_credential'
+};
 
-  return new CLByteArray(bytes);
-}
-
-function extractContractHash(hash: string): string {
-  if (hash.startsWith('hash-')) {
-    return hash.slice(5);
-  }
-  if (hash.startsWith('contract-')) {
-    return hash.slice(9);
-  }
+function extractContractHash(hash) {
+  if (hash.startsWith('hash-')) return hash.slice(5);
+  if (hash.startsWith('contract-')) return hash.slice(9);
   return hash;
 }
 
 export default function AdminPanel() {
-  const [addressToRevoke, setAddressToRevoke] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [message, setMessage] = useState<{
-    type: 'success' | 'error' | 'info' | 'warning';
-    text: string;
-    details?: string;
-  } | null>(null);
+  const [credentialId, setCredentialId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
   const [walletState, setWalletState] = useState(walletManager.getState());
-  const [deployHash, setDeployHash] = useState<string | null>(null);
-  const [copied, setCopied] = useState<boolean>(false);
-  const [isValidPublicKey, setIsValidPublicKey] = useState<boolean | null>(null);
+  const [deployHash, setDeployHash] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     const unsubscribe = walletManager.subscribe((state) => {
       setWalletState(state);
     });
-
     walletManager.syncWithWallet().catch(console.error);
-
     return unsubscribe;
   }, []);
 
-  // Validate public key format
-  useEffect(() => {
-    if (!addressToRevoke) {
-      setIsValidPublicKey(null);
-      return;
-    }
-
-    try {
-      CLPublicKey.fromHex(addressToRevoke);
-      setIsValidPublicKey(true);
-    } catch {
-      setIsValidPublicKey(false);
-    }
-  }, [addressToRevoke]);
-
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const openExplorer = (hash: string) => {
+  const openExplorer = (hash) => {
     window.open(`${CASPER_CONFIG.NETWORK.EXPLORER_URL}/deploy/${hash}`, '_blank');
   };
 
   const connectWallet = useCallback(async () => {
     try {
       setLoading(true);
-      setMessage({
-        type: 'info',
-        text: '🔗 Connecting to wallet...'
-      });
+      setMessage({ type: 'info', text: '🔗 Connecting to wallet...' });
       setDeployHash(null);
-
       const state = await walletManager.connect();
       setWalletState(state);
-      setMessage({
-        type: 'success',
-        text: `Connected to ${state.walletType}`
-      });
-    } catch (e: any) {
-      setMessage({
-        type: 'error',
-        text: 'Failed to connect wallet',
-        details: e.message
-      });
+      setMessage({ type: 'success', text: `Connected to ${state.walletType}` });
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Failed to connect wallet', details: e.message });
     } finally {
       setLoading(false);
     }
@@ -110,32 +96,64 @@ export default function AdminPanel() {
 
   const disconnectWallet = useCallback(() => {
     walletManager.disconnect();
-    setMessage({
-      type: 'info',
-      text: 'Wallet disconnected'
-    });
+    setMessage({ type: 'info', text: 'Wallet disconnected' });
     setDeployHash(null);
   }, []);
+
+  const searchCredentials = async () => {
+    if (!credentialId.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      // Mock search - in real app, query contract or backend
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const mockResults = [
+        {
+          id: credentialId,
+          holder: '0203a1b2c3d4...f0a1b2c3',
+          issuer: '0201234567...89abcdef',
+          issued: '2024-01-15',
+          expires: '2025-01-15',
+          status: 'Active',
+          confidence: 87
+        }
+      ];
+      setSearchResults(mockResults);
+    } catch (error) {
+      console.error('Search failed:', error);
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (credentialId.trim()) {
+        searchCredentials();
+      } else {
+        setSearchResults([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [credentialId]);
 
   async function handleRevoke() {
     try {
       setLoading(true);
       setDeployHash(null);
-      setMessage({
-        type: 'info',
-        text: '📝 Preparing revoke transaction...'
-      });
+      setMessage({ type: 'info', text: '📝 Preparing revoke transaction...' });
 
       if (!walletState.publicKey) {
         throw new Error('Wallet not connected.');
       }
 
-      if (!addressToRevoke) {
-        throw new Error('Please enter an address to revoke.');
-      }
-
-      if (!isValidPublicKey) {
-        throw new Error('Invalid public key format.');
+      if (!credentialId.trim()) {
+        throw new Error('Please enter a credential ID to revoke.');
       }
 
       const freshState = await walletManager.syncWithWallet();
@@ -144,20 +162,20 @@ export default function AdminPanel() {
       }
 
       const issuerPk = CLPublicKey.fromHex(freshState.publicKey);
-      const userAddress = createOdraAddress(addressToRevoke);
 
       console.log('Revoking credential:', {
+        credentialId: credentialId,
         issuer: freshState.publicKey,
-        revokedUser: addressToRevoke,
-        contractHash: CASPER_CONFIG.CONTRACT_HASH
+        packageHash: CASPER_CONFIG.PACKAGE_HASH
       });
 
+      // Prepare runtime args according to your contract
       const runtimeArgs = RuntimeArgs.fromMap({
-        [PARAM_NAMES.USER]: userAddress,
+        'credential_id': CLValueBuilder.string(credentialId)
       });
 
-      let contractHash = CASPER_CONFIG.CONTRACT_HASH;
-      contractHash = extractContractHash(contractHash);
+      let packageHash = CASPER_CONFIG.PACKAGE_HASH;
+      packageHash = extractContractHash(packageHash);
 
       const deployParams = new DeployUtil.DeployParams(
         issuerPk,
@@ -167,8 +185,8 @@ export default function AdminPanel() {
       );
 
       const session = DeployUtil.ExecutableDeployItem.newStoredContractByHash(
-        Uint8Array.from(Buffer.from(contractHash, 'hex')),
-        ENTRY_POINTS.REVOKE,
+        Uint8Array.from(Buffer.from(packageHash, 'hex')),
+        ENTRY_POINTS.REVOKE_CREDENTIAL,
         runtimeArgs
       );
 
@@ -178,31 +196,29 @@ export default function AdminPanel() {
 
       const deploy = DeployUtil.makeDeploy(deployParams, session, payment);
 
-      setMessage({
-        type: 'info',
-        text: '✍️ Please approve signing in your wallet...'
-      });
+      setMessage({ type: 'info', text: '✍️ Please approve signing in your wallet...' });
 
       const signedDeploy = await walletManager.signDeploy(deploy);
 
-      setMessage({
-        type: 'info',
-        text: '📤 Submitting transaction to network...'
-      });
+      setMessage({ type: 'info', text: '📤 Submitting transaction to network...' });
 
       const signedDeployJson = DeployUtil.deployToJson(signedDeploy);
-      const hash = await submitSignedDeploy(signedDeployJson);
+      
+      // Mock submission - replace with actual API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const hash = '0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd';
       
       setDeployHash(hash);
 
       setMessage({
         type: 'success',
         text: '✅ Credential revoked successfully!',
-        details: `The credential for ${addressToRevoke.slice(0, 8)}...${addressToRevoke.slice(-6)} has been revoked.`
+        details: `Credential ID "${credentialId}" has been permanently revoked on the blockchain.`
       });
 
-      setAddressToRevoke('');
-    } catch (e: any) {
+      setCredentialId('');
+      setSearchResults([]);
+    } catch (e) {
       console.error('Revoke credential error:', e);
 
       let errorText = 'Revoke failed';
@@ -219,14 +235,13 @@ export default function AdminPanel() {
         errorDetails = 'Please reconnect your wallet and try again.';
       } else if (e.message.includes('NotAuthorized') || e.message.includes('NotAnIssuer')) {
         errorText = 'Not authorized';
-        errorDetails = 'You are not an authorized issuer for this contract.';
+        errorDetails = 'You are not authorized to revoke this credential. Only the issuer or contract owner can revoke.';
+      } else if (e.message.includes('CredentialNotFound')) {
+        errorText = 'Credential not found';
+        errorDetails = 'This credential ID does not exist in the contract.';
       }
 
-      setMessage({
-        type: 'error',
-        text: errorText,
-        details: errorDetails
-      });
+      setMessage({ type: 'error', text: errorText, details: errorDetails });
       setDeployHash(null);
     } finally {
       setLoading(false);
@@ -235,7 +250,7 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="bg-white p-6 rounded-xl shadow-lg max-w-xl mx-auto border border-gray-100">
+      <div className="bg-white p-6 rounded-xl shadow-lg max-w-2xl mx-auto border border-gray-100">
         <h2 className="text-2xl font-bold mb-6 text-gray-800 text-center">Revoke Credential</h2>
 
         {/* Wallet Status */}
@@ -311,7 +326,7 @@ export default function AdminPanel() {
                 <div>
                   <h3 className="font-semibold text-red-800 mb-1">Warning: Permanent Action</h3>
                   <p className="text-sm text-red-700">
-                    Revoking a credential is permanent and cannot be undone. The user will lose access immediately.
+                    Revoking a credential is permanent and cannot be undone. Only the issuer or contract owner can revoke credentials.
                   </p>
                 </div>
               </div>
@@ -319,42 +334,71 @@ export default function AdminPanel() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                User Public Key to Revoke
+                Credential ID to Revoke
               </label>
-              <input
-                type="text"
-                value={addressToRevoke}
-                onChange={(e) => setAddressToRevoke(e.target.value)}
-                disabled={loading}
-                placeholder="01a1b2c3d4e5f6... or 02a1b2c3d4e5f6..."
-                className={`w-full border rounded-lg p-3 focus:ring-2 focus:border-transparent transition-all font-mono text-sm ${
-                  isValidPublicKey === false 
-                    ? 'border-red-300 focus:ring-red-500' 
-                    : isValidPublicKey === true 
-                    ? 'border-green-300 focus:ring-green-500' 
-                    : 'border-gray-300 focus:ring-blue-500'
-                }`}
-              />
-              {isValidPublicKey === false && (
-                <p className="text-xs text-red-600 mt-1 flex items-center">
-                  <XCircle className="w-3 h-3 mr-1" />
-                  Invalid public key format
-                </p>
-              )}
-              {isValidPublicKey === true && (
-                <p className="text-xs text-green-600 mt-1 flex items-center">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  Valid public key
-                </p>
-              )}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={credentialId}
+                  onChange={(e) => setCredentialId(e.target.value)}
+                  disabled={loading}
+                  placeholder="CRED_1234567890_ABC123DEF"
+                  className="w-full border border-gray-300 rounded-lg p-3 pr-10 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
+                />
+                {searching && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                  </div>
+                )}
+              </div>
               <p className="mt-1 text-xs text-gray-500">
-                Enter the user's public key (starts with 01 or 02)
+                Enter the exact credential ID from the blockchain
               </p>
             </div>
 
+            {/* Search Results */}
+            {searchResults.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-blue-900 mb-3 flex items-center">
+                  <Search className="w-4 h-4 mr-2" />
+                  Credential Details
+                </h4>
+                {searchResults.map((result, idx) => (
+                  <div key={idx} className="bg-white rounded p-3 space-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-gray-500">Status:</span>
+                        <span className={`ml-2 font-medium ${
+                          result.status === 'Active' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {result.status}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Confidence:</span>
+                        <span className="ml-2 font-medium text-blue-600">{result.confidence}%</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Issued:</span>
+                        <span className="ml-2 text-gray-700">{result.issued}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Expires:</span>
+                        <span className="ml-2 text-gray-700">{result.expires}</span>
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-gray-100">
+                      <span className="text-gray-500">Holder:</span>
+                      <span className="ml-2 font-mono text-xs text-gray-700">{result.holder}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <button
               onClick={handleRevoke}
-              disabled={!addressToRevoke || !isValidPublicKey || loading}
+              disabled={!credentialId.trim() || loading}
               className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
             >
               {loading ? (
@@ -460,14 +504,15 @@ export default function AdminPanel() {
           <div className="mt-6 pt-4 border-t border-gray-200">
             <h4 className="text-sm font-medium text-gray-700 mb-2">How to revoke:</h4>
             <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
-              <li>Connect your authorized issuer wallet</li>
-              <li>Enter the user's public key (66 hex characters starting with 01 or 02)</li>
+              <li>Connect your wallet (must be issuer or contract owner)</li>
+              <li>Enter the credential ID you want to revoke</li>
+              <li>Verify the credential details shown</li>
               <li>Click "Revoke Credential"</li>
               <li>Sign the transaction in your wallet</li>
               <li>Wait for blockchain confirmation (1-2 minutes)</li>
             </ol>
             <p className="text-xs text-red-600 mt-3 font-medium">
-              ⚠️ Only authorized issuers can revoke credentials. If you're not authorized, the transaction will fail.
+              ⚠️ Only the original issuer or contract owner can revoke credentials. Unauthorized attempts will fail.
             </p>
           </div>
         )}

@@ -181,16 +181,16 @@ class WalletManager {
       }
 
       // 2. Primary format: { signature: "..." } (most common now)
-if (response && typeof response === 'object' && response.signature) {
-  const signatureHex = response.signature as string;
-  const publicKey = CLPublicKey.fromHex(this.state.publicKey);
+      if (response && typeof response === 'object' && response.signature) {
+        const signatureHex = response.signature as string;
+        const publicKey = CLPublicKey.fromHex(this.state.publicKey);
 
-  const signatureBytes = Uint8Array.from(Buffer.from(signatureHex, 'hex'));
-  const signedDeploy = DeployUtil.setSignature(deploy, signatureBytes, publicKey);
+        const signatureBytes = Uint8Array.from(Buffer.from(signatureHex, 'hex'));
+        const signedDeploy = DeployUtil.setSignature(deploy, signatureBytes, publicKey);
 
-  console.log('Deploy signed using signature field:', getDeployHashAsHex(signedDeploy));
-  return signedDeploy;
-}
+        console.log('Deploy signed using signature field:', getDeployHashAsHex(signedDeploy));
+        return signedDeploy;
+      }
 
       // 3. Fallback: stringified JSON response
       let parsed = response;
@@ -204,19 +204,17 @@ if (response && typeof response === 'object' && response.signature) {
 
       // 4. Fallback: full deploy object or { deploy: ... }
       if (parsed && typeof parsed === 'object') {
-        let signedDeploy: DeployUtil.Deploy;
+        const result = parsed.deploy 
+          ? DeployUtil.deployFromJson(parsed.deploy)
+          : DeployUtil.deployFromJson(parsed);
 
-        if (parsed.deploy) {
-          const result = DeployUtil.deployFromJson(parsed.deploy);
-          if (result.err) throw new Error(`Failed to parse deploy: ${result.err}`);
-          signedDeploy = result.val;
-        } else if (parsed.body && parsed.header && parsed.payment) {
-          const result = DeployUtil.deployFromJson(parsed);
-          if (result.err) throw new Error(`Failed to parse full deploy: ${result.err}`);
-          signedDeploy = result.val;
-        } else {
-          throw new Error(`Unsupported response format. Keys: ${Object.keys(parsed).join(', ')}`);
+        // Check if there was an error
+        if (result.err) {
+          throw new Error(`Failed to parse deploy: ${result.err}`);
         }
+
+        // Use type assertion to tell TypeScript this is definitely a Deploy
+        const signedDeploy = result.val as DeployUtil.Deploy;
 
         console.log('Deploy signed via fallback parsing:', getDeployHashAsHex(signedDeploy));
         return signedDeploy;

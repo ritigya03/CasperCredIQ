@@ -1,0 +1,222 @@
+{
+  "jsonrpc": "2.0",
+  "id": -4895603972258992839,
+  "result": {
+    "api_version": "2.0.0",
+    "block_header": null,
+    "stored_value": {
+      "Contract": {
+        "contract_package_hash": "contract-package-32f170fbb5a6410270a1fe0d89bcb060d9f8291a4a70a9d3dda3159f21565a35",
+        "contract_wasm_hash": "contract-wasm-df1f8ff727b074bab05610940427777ffbab72267d035b8e33940ce1c48ac156",
+        "named_keys": [
+          {
+            "name": "__events",
+            "key": "uref-b2228a904f5eba0ca44e70716a4946c793a979a23f9d447b4b4549aba15b5e84-007"
+          },
+          {
+            "name": "__events_ces_version",
+            "key": "uref-6450b1131d9f421638f89f710ad00b759acc59b5e24e61b0726278299d55357c-007"
+          },
+          {
+            "name": "__events_length",
+            "key": "uref-9d86a30910f43cea64dd85a7b29749db81793c4268988fe2b35ea97b9769b26b-007"
+          },
+          {
+            "name": "__events_schema",
+            "key": "uref-ab8df427102f1ee035001efdb55b044a4000e391ceb86bb17e860f8ffbbf98a8-007"
+          },
+          {
+            "name": "state",
+            "key": "uref-cba216bb0cfce8922e46d178c9e65a75b821ea85599abe811700dbe07cb4e13f-007"
+          }
+        ],
+        "entry_points": [
+          {
+            "name": "get_access_level",
+            "args": [
+              {
+                "name": "address",
+                "cl_type": "Key"
+              }
+            ],
+            "ret": "U8",
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "get_confidence",
+            "args": [
+              {
+                "name": "credential_id",
+                "cl_type": "String"
+              }
+            ],
+            "ret": {
+              "Option": "U8"
+            },
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "get_expiry",
+            "args": [
+              {
+                "name": "credential_id",
+                "cl_type": "String"
+              }
+            ],
+            "ret": {
+              "Option": "U64"
+            },
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "get_holder",
+            "args": [
+              {
+                "name": "credential_id",
+                "cl_type": "String"
+              }
+            ],
+            "ret": {
+              "Option": "Key"
+            },
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "get_ipfs_hash",
+            "args": [
+              {
+                "name": "credential_id",
+                "cl_type": "String"
+              }
+            ],
+            "ret": {
+              "Option": "String"
+            },
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "get_issuer",
+            "args": [
+              {
+                "name": "credential_id",
+                "cl_type": "String"
+              }
+            ],
+            "ret": {
+              "Option": "Key"
+            },
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "get_owner",
+            "args": [],
+            "ret": "Key",
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "init",
+            "args": [],
+            "ret": "Unit",
+            "access": {
+              "Groups": [
+                "constructor_group"
+              ]
+            },
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "is_revoked",
+            "args": [
+              {
+                "name": "credential_id",
+                "cl_type": "String"
+              }
+            ],
+            "ret": {
+              "Option": "Bool"
+            },
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "issue_credential",
+            "args": [
+              {
+                "name": "credential_id",
+                "cl_type": "String"
+              },
+              {
+                "name": "holder",
+                "cl_type": "Key"
+              },
+              {
+                "name": "ipfs_hash",
+                "cl_type": "String"
+              },
+              {
+                "name": "ai_confidence",
+                "cl_type": "U8"
+              },
+              {
+                "name": "expires_in_days",
+                "cl_type": "U64"
+              }
+            ],
+            "ret": "Unit",
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "revoke_credential",
+            "args": [
+              {
+                "name": "credential_id",
+                "cl_type": "String"
+              }
+            ],
+            "ret": "Unit",
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "set_access_level",
+            "args": [
+              {
+                "name": "user",
+                "cl_type": "Key"
+              },
+              {
+                "name": "level",
+                "cl_type": "U8"
+              }
+            ],
+            "ret": "Unit",
+            "access": "Public",
+            "entry_point_type": "Called"
+          },
+          {
+            "name": "verify_credential",
+            "args": [
+              {
+                "name": "credential_id",
+                "cl_type": "String"
+              }
+            ],
+            "ret": "Bool",
+            "access": "Public",
+            "entry_point_type": "Called"
+          }
+        ],
+        "protocol_version": "2.1.1"
+      }
+    },
+    "merkle_proof": "[31170 hex chars]"
+  }
+}
