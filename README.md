@@ -14,8 +14,7 @@ It leverages **AI-powered verification** to automate credential approval process
 ## 🎥 Demo Video
 
 ▶️ **Project Walkthrough:**  
-https://youtu.be/your-demo-video-link  
-*(Replace with your actual demo link)*
+[https://drive.google.com/file/d/1NDCo8fYO3YYgdZNefeXyF_ArZcytvpbM/view?usp=sharing]
 
 ---
 
@@ -66,8 +65,3 @@ https://youtu.be/your-demo-video-link
 - Pinata account  
 
 ---
-
-### 1️⃣ Clone Repository
-```bash
-git clone https://github.com/yourusername/caspercrediq.git
-cd caspercrediq
