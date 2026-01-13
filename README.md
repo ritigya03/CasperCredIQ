@@ -14,7 +14,7 @@ It leverages **AI-powered verification** to automate credential approval process
 ## 🎥 Demo Video
 
 ▶️ **Project Walkthrough:**  
-[https://drive.google.com/file/d/1NDCo8fYO3YYgdZNefeXyF_ArZcytvpbM/view?usp=sharing]
+[https://drive.google.com/file/d/1BDNI5MeKXJ9heGgAax0ad_-fCVYGB2iT/view?usp=sharing]
 
 ---
 
