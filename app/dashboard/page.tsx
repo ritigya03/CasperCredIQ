@@ -185,7 +185,7 @@ export default function Home() {
 </div>
 
 {/* Role Resources */}
-<div className="bg-white rounded-lg shadow p-4 border">
+{/* <div className="bg-white rounded-lg shadow p-4 border">
   <div className="flex items-center justify-between mb-3">
     <h2 className="text-lg font-semibold">Roles & Resources</h2>
     <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-[11px] font-medium">
@@ -200,7 +200,7 @@ export default function Home() {
   </div>
 
   <RoleResources />
-</div>
+</div> */}
 
 
       

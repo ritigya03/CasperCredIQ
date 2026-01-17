@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, X, FileText, AlertCircle, QrCode, Copy, Download, CheckCircle, ExternalLink } from 'lucide-react';
+import { Upload, X, FileText, AlertCircle, CheckCircle, ExternalLink, AlertTriangle } from 'lucide-react';
 
 interface VerificationFormData {
   name: string;
@@ -12,7 +12,6 @@ interface VerificationFormData {
   email: string;
   phone: string;
   duration: string;
-  // Additional fields for credential issuance
   credentialType: string;
   recipientPublicKey: string;
   validityDays: string;
@@ -30,12 +29,18 @@ interface VerificationResult {
   requestId: string;
   timestamp: string;
   message: string;
+  recommendation?: string;
+  riskFactors?: string[];
+  strengths?: string[];
   aiVerification?: {
     aiVerified: boolean;
     aiConfidence: number;
     aiJustification: string;
     verificationSource: string;
     verificationId: string;
+    recommendation?: string;
+    riskFactors?: string[];
+    strengths?: string[];
   };
 }
 
@@ -47,7 +52,6 @@ interface UploadedFile {
 }
 
 export default function AIVerificationForm() {
-  // Use the correct backend URL
   const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
   
   const [formData, setFormData] = useState<VerificationFormData>({
@@ -75,12 +79,10 @@ export default function AIVerificationForm() {
   const [step, setStep] = useState<'form' | 'review' | 'result'>('form');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [skillsInput, setSkillsInput] = useState('');
-  const [formSubmitted, setFormSubmitted] = useState(false);
 
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof VerificationFormData, string>> = {};
     
-    // Personal info validation
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (!formData.gender) newErrors.gender = 'Gender is required';
     if (!formData.age) {
@@ -94,8 +96,6 @@ export default function AIVerificationForm() {
     if (!formData.phone.match(/^[+]?[\d\s-]+$/)) {
       newErrors.phone = 'Enter a valid phone number';
     }
-    
-    // Credential info validation
     if (!formData.role) newErrors.role = 'Role is required';
     if (!formData.credentialType) newErrors.credentialType = 'Credential type is required';
     if (!formData.organization || formData.organization.length < 2) {
@@ -103,9 +103,7 @@ export default function AIVerificationForm() {
     }
     if (!formData.duration) newErrors.duration = 'Duration is required';
     if (!formData.validityDays) newErrors.validityDays = 'Validity period is required';
-    // Make public key optional for demo
     if (!formData.recipientPublicKey) {
-      // Generate a demo public key if none provided
       const demoKey = `demo_pk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       setFormData(prev => ({ ...prev, recipientPublicKey: demoKey }));
     }
@@ -151,7 +149,6 @@ export default function AIVerificationForm() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         alert(`File ${file.name} is too large. Maximum size is 5MB.`);
         continue;
@@ -223,15 +220,17 @@ export default function AIVerificationForm() {
     try {
       console.log('Submitting to backend:', BACKEND_API_URL);
 
-      // Step 1: Get AI verification first
-      console.log('Step 1: Getting AI verification...');
-      
       const aiPayload = {
         name: formData.name,
         email: formData.email,
         organization: formData.organization,
         role: formData.role,
-        justification: formData.justification
+        justification: formData.justification,
+        age: formData.age,
+        phone: formData.phone,
+        gender: formData.gender,
+        duration: formData.duration,
+        credentialType: formData.credentialType
       };
 
       console.log('Sending AI verification request:', aiPayload);
@@ -248,46 +247,38 @@ export default function AIVerificationForm() {
       if (!aiResponse.ok) {
         const errorText = await aiResponse.text();
         console.error('AI verification failed:', errorText);
-        // Continue anyway with default values
-        console.log('Continuing with simulated AI verification...');
+        throw new Error('AI verification failed');
       }
 
-      let aiVerificationData;
-      try {
-        aiVerificationData = await aiResponse.json();
-        console.log('AI verification response:', aiVerificationData);
-      } catch (e) {
-        console.log('Using simulated AI verification');
-        aiVerificationData = {
-          success: true,
-          aiVerification: {
-            aiVerified: true,
-            aiConfidence: 0.85,
-            aiJustification: 'Auto-approved for demonstration',
-            verificationSource: 'Demo system',
-            verificationId: `DEMO_${Date.now()}`
-          }
-        };
-      }
+      const aiVerificationData = await aiResponse.json();
+      console.log('AI verification response:', aiVerificationData);
 
-      // Step 2: Submit the request to the backend
-      console.log('Step 2: Submitting request to backend...');
+      // Extract the recommendation properly
+      const aiVerification = aiVerificationData.aiVerification;
+      const recommendation = aiVerification?.recommendation || 'REVIEW';
+      const isApproved = recommendation === 'APPROVE';
+      const aiConfidence = aiVerification?.aiConfidence || 0;
       
+      // Determine risk level based on recommendation
+      let riskLevel = 'medium';
+      if (recommendation === 'REJECT') {
+        riskLevel = 'high';
+      } else if (recommendation === 'APPROVE') {
+        riskLevel = 'low';
+      }
+
       const requestPayload = {
         name: formData.name,
         email: formData.email,
         role: formData.role,
         organization: formData.organization,
         justification: formData.justification,
-        // AI verification results
-        aiConfidence: aiVerificationData.aiVerification?.aiConfidence || 0.85,
-        aiRecommendation: aiVerificationData.aiVerification?.aiVerified || true,
-        aiJustification: aiVerificationData.aiVerification?.aiJustification || 'Auto-approved for demonstration',
-        // Credential fields
+        aiConfidence: aiConfidence,
+        aiRecommendation: isApproved,
+        aiJustification: aiVerification?.aiJustification || '',
         credentialType: formData.credentialType,
         recipientPublicKey: formData.recipientPublicKey || `demo_pk_${Date.now()}`,
         validityDays: formData.validityDays,
-        // Additional fields
         department: formData.department,
         skills: formData.skills,
         age: formData.age,
@@ -295,7 +286,6 @@ export default function AIVerificationForm() {
         phone: formData.phone,
         duration: formData.duration,
         supportingDocuments: formData.supportingDocuments,
-        // Metadata
         metadata: {
           skills: formData.skills,
           department: formData.department || 'General',
@@ -305,8 +295,11 @@ export default function AIVerificationForm() {
           gender: formData.gender,
           phone: formData.phone,
           duration: formData.duration,
-          verificationSource: aiVerificationData.aiVerification?.verificationSource || 'Demo',
-          verificationId: aiVerificationData.aiVerification?.verificationId || `VER_${Date.now()}`
+          verificationSource: aiVerification?.verificationSource || 'AI',
+          verificationId: aiVerification?.verificationId || `VER_${Date.now()}`,
+          recommendation: recommendation,
+          riskFactors: aiVerification?.riskFactors || [],
+          strengths: aiVerification?.strengths || []
         }
       };
 
@@ -324,37 +317,36 @@ export default function AIVerificationForm() {
       if (!requestResponse.ok) {
         const errorText = await requestResponse.text();
         console.error('Request submission failed:', errorText);
-        throw new Error(`Request submission failed: ${requestResponse.status} ${requestResponse.statusText}`);
+        throw new Error(`Request submission failed: ${requestResponse.status}`);
       }
 
       const requestData = await requestResponse.json();
       console.log('Request submission response:', requestData);
-      
-      if (!requestData.success) {
-        throw new Error(requestData.error || 'Request submission failed');
-      }
 
-      // Combine results
       const finalResult: VerificationResult = {
         success: true,
-        recommended: aiVerificationData.aiVerification?.aiVerified || true,
-        confidence: aiVerificationData.aiVerification?.aiConfidence || 0.85,
-        risk_level: (aiVerificationData.aiVerification?.aiConfidence || 0.85) > 0.7 ? 'low' : 'medium',
-        explanation: aiVerificationData.aiVerification?.aiJustification || 'Application submitted successfully',
+        recommended: isApproved,
+        confidence: aiConfidence,
+        risk_level: riskLevel,
+        explanation: aiVerification?.aiJustification || 'Application submitted',
         requestId: requestData.requestId || `REQ_${Date.now()}`,
         timestamp: new Date().toISOString(),
-        message: 'Your request has been submitted and is pending issuer approval',
-        aiVerification: aiVerificationData.aiVerification
+        message: isApproved 
+          ? 'Your request has been approved by AI and is pending final issuer review'
+          : recommendation === 'REJECT'
+          ? 'Your request was flagged by AI verification. Manual review required.'
+          : 'Your request requires manual review by an issuer',
+        recommendation: recommendation,
+        riskFactors: aiVerification?.riskFactors || [],
+        strengths: aiVerification?.strengths || [],
+        aiVerification: aiVerification
       };
 
-      // Store the result
       setResult(finalResult);
-      setFormSubmitted(true);
-      
       setStep('result');
     } catch (error: any) {
       console.error('Submission failed:', error);
-      alert(`Submission failed: ${error.message || 'Unknown error'}. Please ensure the backend server is running on ${BACKEND_API_URL}`);
+      alert(`Submission failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -370,7 +362,6 @@ export default function AIVerificationForm() {
     if (step === 'result') {
       setStep('form');
       setResult(null);
-      setFormSubmitted(false);
     } else if (step === 'review') {
       setStep('form');
     }
@@ -398,7 +389,6 @@ export default function AIVerificationForm() {
     setUploadedFiles([]);
     setSkillsInput('');
     setErrors({});
-    setFormSubmitted(false);
     setStep('form');
   };
 
@@ -509,17 +499,34 @@ export default function AIVerificationForm() {
   }
 
   if (step === 'result' && result) {
-    const statusColor = result.recommended ? 'green' : 'red';
-    const statusText = result.recommended ? 'Recommended' : 'Not Recommended';
+    const getStatusColor = () => {
+      if (result.recommendation === 'APPROVE') return 'green';
+      if (result.recommendation === 'REJECT') return 'red';
+      return 'yellow';
+    };
+
+    const getStatusText = () => {
+      if (result.recommendation === 'APPROVE') return 'Approved by AI';
+      if (result.recommendation === 'REJECT') return 'Rejected by AI';
+      return 'Requires Review';
+    };
+
+    const statusColor = getStatusColor();
+    const statusText = getStatusText();
     
     return (
       <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-md">
         <div className="text-center mb-6">
-          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full ${result.recommended ? 'bg-green-100' : 'bg-red-100'} mb-4`}>
-            {result.recommended ? (
+          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full ${
+            statusColor === 'green' ? 'bg-green-100' : 
+            statusColor === 'red' ? 'bg-red-100' : 'bg-yellow-100'
+          } mb-4`}>
+            {statusColor === 'green' ? (
               <CheckCircle className="w-8 h-8 text-green-600" />
-            ) : (
+            ) : statusColor === 'red' ? (
               <X className="w-8 h-8 text-red-600" />
+            ) : (
+              <AlertTriangle className="w-8 h-8 text-yellow-600" />
             )}
           </div>
           <h2 className="text-2xl font-bold mb-2 text-gray-800">
@@ -535,44 +542,67 @@ export default function AIVerificationForm() {
           <p className="text-gray-800">{result.explanation}</p>
         </div>
         
+        {result.riskFactors && result.riskFactors.length > 0 && (
+          <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200">
+            <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" />
+              Risk Factors Identified:
+            </h3>
+            <ul className="list-disc list-inside space-y-1 text-sm text-red-700">
+              {result.riskFactors.map((factor, idx) => (
+                <li key={idx}>{factor}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
+        {result.strengths && result.strengths.length > 0 && (
+          <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
+            <h3 className="font-semibold text-green-800 mb-2 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5" />
+              Positive Factors:
+            </h3>
+            <ul className="list-disc list-inside space-y-1 text-sm text-green-700">
+              {result.strengths.map((strength, idx) => (
+                <li key={idx}>{strength}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 bg-blue-50 rounded">
             <h4 className="font-semibold text-blue-700 mb-1">Confidence Score</h4>
             <p className="text-2xl font-bold text-blue-800">{Math.round(result.confidence * 100)}%</p>
+            <p className="text-xs text-blue-600 mt-1">How sure AI is about its decision</p>
           </div>
           <div className="p-4 bg-gray-50 rounded">
             <h4 className="font-semibold text-gray-700 mb-1">Risk Level</h4>
-            <p className={`text-lg font-bold capitalize ${result.risk_level === 'high' || result.risk_level === 'critical' ? 'text-red-600' : result.risk_level === 'medium' ? 'text-yellow-600' : 'text-green-600'}`}>
+            <p className={`text-lg font-bold capitalize ${
+              result.risk_level === 'high' || result.risk_level === 'critical' ? 'text-red-600' : 
+              result.risk_level === 'medium' ? 'text-yellow-600' : 'text-green-600'
+            }`}>
               {result.risk_level}
             </p>
           </div>
-          <div className="p-4 bg-green-50 rounded">
-            <h4 className="font-semibold text-green-700 mb-1">Status</h4>
-            <p className="text-sm text-green-800">
-              {result.message || 'Request submitted to issuer dashboard'}
+          <div className={`p-4 rounded ${
+            statusColor === 'green' ? 'bg-green-50' :
+            statusColor === 'red' ? 'bg-red-50' : 'bg-yellow-50'
+          }`}>
+            <h4 className={`font-semibold mb-1 ${
+              statusColor === 'green' ? 'text-green-700' :
+              statusColor === 'red' ? 'text-red-700' : 'text-yellow-700'
+            }`}>Status</h4>
+            <p className={`text-sm ${
+              statusColor === 'green' ? 'text-green-800' :
+              statusColor === 'red' ? 'text-red-800' : 'text-yellow-800'
+            }`}>
+              {result.message}
             </p>
           </div>
         </div>
         
-        {result.aiVerification && (
-          <div className="mt-6 bg-blue-50 p-4 rounded-lg border border-blue-200">
-            <div className="flex items-start">
-              <CheckCircle className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="font-semibold text-blue-800 mb-2">AI Verification Details</h4>
-                <p className="text-sm text-blue-700 mb-1">
-                  <strong>Verification ID:</strong> {result.aiVerification.verificationId}
-                </p>
-                <p className="text-sm text-blue-700 mb-1">
-                  <strong>Source:</strong> {result.aiVerification.verificationSource}
-                </p>
-                <p className="text-sm text-blue-700">
-                  <strong>Justification:</strong> {result.aiVerification.aiJustification}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        
         
         <div className="mt-6 bg-yellow-50 p-4 rounded-lg border border-yellow-200">
           <div className="flex items-start">
@@ -581,10 +611,12 @@ export default function AIVerificationForm() {
               <h4 className="font-semibold text-yellow-800 mb-2">What happens next?</h4>
               <ol className="text-sm text-yellow-800 space-y-1 list-decimal list-inside">
                 <li>Your request is now in the issuer's queue</li>
-                <li>An admin will review your application</li>
-                <li>If approved, they will issue your credential on the blockchain</li>
+                <li>An admin will review your application and the AI analysis</li>
+                {result.recommendation === 'APPROVE' && <li>Since AI approved your request, manual review should be quick</li>}
+                {result.recommendation === 'REJECT' && <li className="font-semibold">AI flagged concerns - expect thorough manual review</li>}
+                {result.recommendation === 'REVIEW' && <li>Manual review will determine final approval</li>}
+                <li>If approved, your credential will be issued on the blockchain</li>
                 <li>You'll receive an email with your credential details</li>
-                <li>You can use the QR code and access code to unlock doors</li>
               </ol>
             </div>
           </div>
@@ -593,21 +625,21 @@ export default function AIVerificationForm() {
         <div className="mt-6 bg-green-50 p-4 rounded-lg border border-green-200">
           <div className="flex items-start">
             <ExternalLink className="w-5 h-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="font-semibold text-green-800 mb-2">Your request is now visible to issuers</h4>
+            <div className="flex-1">
+              <h4 className="font-semibold text-green-800 mb-2">✅ Request Submitted to Issuer Dashboard</h4>
               <p className="text-sm text-green-700 mb-2">
-                Issuers can now see your request in their dashboard. You'll be notified when they review it.
+                Your request is now visible in the issuer dashboard and pending admin approval.
               </p>
-              <p className="text-xs text-green-600">
+              <div className="text-xs text-green-600 bg-green-100 p-2 rounded">
                 <strong>Backend URL:</strong> {BACKEND_API_URL}<br/>
                 <strong>Request ID:</strong> {result.requestId}<br/>
-                <strong>Submitted:</strong> {new Date(result.timestamp).toLocaleString()}<br/>
-                <strong>API Endpoint:</strong> {BACKEND_API_URL}/api/requests
-              </p>
+                <strong>API Endpoint:</strong> GET {BACKEND_API_URL}/api/requests<br/>
+                <strong>Status:</strong> Pending Issuer Review
+              </div>
             </div>
           </div>
         </div>
-        
+
         <div className="mt-6 flex flex-col sm:flex-row gap-3">
           <button
             onClick={resetForm}
@@ -616,16 +648,11 @@ export default function AIVerificationForm() {
             Submit Another Request
           </button>
           <button
-            onClick={() => window.location.href = '/verify'}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition flex-1"
+            onClick={() => window.open(`${BACKEND_API_URL}/api/requests`, '_blank')}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex-1 flex items-center justify-center gap-2"
           >
-            Check Verification Status
-          </button>
-          <button
-            onClick={() => window.open('/issue', '_blank')}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex-1"
-          >
-            View Issuer Dashboard
+            <ExternalLink className="w-4 h-4" />
+            View All Requests (JSON)
           </button>
         </div>
       </div>
@@ -1003,11 +1030,10 @@ export default function AIVerificationForm() {
             <div>
               <h3 className="font-semibold text-blue-800 mb-2">Important Information</h3>
               <ul className="text-sm text-blue-700 space-y-1">
-                <li>• Your request will be reviewed by AI system at {BACKEND_API_URL}/api/ai/verify</li>
-                <li>• Approved requests are stored at {BACKEND_API_URL}/api/requests</li>
-                <li>• Issuers can view requests in their dashboard at {BACKEND_API_URL}/api/requests</li>
-                <li>• You'll receive email notification when credential is issued</li>
-                <li>• All credentials are stored on IPFS and Casper blockchain</li>
+                <li>• Your request will be analyzed by Gemini 2.0 Flash AI</li>
+                <li>• AI will check email legitimacy, role appropriateness, and justification quality</li>
+                <li>• All requests are reviewed by human issuers regardless of AI recommendation</li>
+                <li>• Approved credentials are stored on IPFS and Casper blockchain</li>
               </ul>
             </div>
           </div>
@@ -1024,7 +1050,7 @@ export default function AIVerificationForm() {
           
           <div className="text-sm text-gray-500 text-center sm:text-right">
             <p>Fields marked with * are required</p>
-            <p className="text-xs mt-1">Requests are stored in memory and visible to issuer dashboard</p>
+            <p className="text-xs mt-1">AI-powered verification with Gemini 2.0 Flash</p>
           </div>
         </div>
       </div>
