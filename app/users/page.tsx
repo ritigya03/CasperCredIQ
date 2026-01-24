@@ -82,7 +82,8 @@ export default function UsersPage() {
   const [request, setRequest] = useState<RequestStatus | null>(null);
   const [error, setError] = useState('');
 
-  const API_URL = 'http://localhost:3001';
+  // Use environment variable, fallback to deployed backend, then localhost
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://caspercrediq-production.up.railway.app' || 'http://localhost:3001';
 
   const searchRequest = async () => {
     if (!requestId.trim()) {

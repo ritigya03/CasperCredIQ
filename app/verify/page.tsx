@@ -11,8 +11,8 @@ const CredentialVerification = () => {
   const [credential, setCredential] = useState(null);
   const [error, setError] = useState('');
 
-  // Use your backend API instead of direct RPC calls
-  const API_URL = 'http://localhost:3001';
+  // Use environment variable, fallback to deployed backend, then localhost
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://caspercrediq-production.up.railway.app' || 'http://localhost:3001';
   const [autoVerify, setAutoVerify] = useState(false);
 
   // Check URL parameters on mount
