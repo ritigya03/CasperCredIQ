@@ -52,7 +52,7 @@ interface UploadedFile {
 }
 
 export default function AIVerificationForm() {
-  const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://caspercrediq-6.onrender.com' || 'http://localhost:3001';
   
   const [formData, setFormData] = useState<VerificationFormData>({
     name: '',

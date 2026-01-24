@@ -12,7 +12,7 @@ const CredentialVerification = () => {
   const [error, setError] = useState('');
 
   // Use environment variable, fallback to deployed backend, then localhost
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://caspercrediq-production.up.railway.app' || 'http://localhost:3001';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://caspercrediq-6.onrender.com' || 'http://localhost:3001';
   const [autoVerify, setAutoVerify] = useState(false);
 
   // Check URL parameters on mount

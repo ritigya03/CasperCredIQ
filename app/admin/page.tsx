@@ -117,7 +117,7 @@ export default function AdminPage() {
         text: '📡 Submitting to Casper blockchain...'
       });
 
-      const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://caspercrediq-6.onrender.com' || 'http://localhost:3001';
       const submitResponse = await fetch(`${BACKEND_API_URL}/api/deploy/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

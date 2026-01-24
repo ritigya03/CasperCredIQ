@@ -82,9 +82,8 @@ app.use(cors({
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
-    'https://fearless-laughter-production.up.railway.app',
-    'https://caspercrediq-production.up.railway.app',
-    'https://amusing-celebration-production.up.railway.app'
+    'https://caspercrediq-6.onrender.com',
+    /\.vercel\.app$/ // Allow all Vercel deployments
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
