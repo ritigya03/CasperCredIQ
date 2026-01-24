@@ -762,6 +762,9 @@ const generateIssuerSignature = (credentialData: any, issuerPublicKey: string): 
                           <div className="flex flex-wrap items-center gap-2 mb-3">
                             <User className="w-5 h-5 text-gray-400 flex-shrink-0" />
                             <h3 className="font-semibold text-gray-900 text-lg">{request.name}</h3>
+                            <span className="px-2 py-1 text-xs font-mono bg-gray-100 text-gray-700 rounded border border-gray-300">
+                              ID: {request.id}
+                            </span>
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                               request.aiRecommendation 
                                 ? 'bg-green-100 text-green-800' 

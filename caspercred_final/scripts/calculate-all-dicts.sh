@@ -1,4 +1,7 @@
-#!/bin/bash
+casper-client query-global-state \
+  --node-address http://65.109.83.79:7777 \
+  --state-root-hash d9c88f68a7bfad29521e7ba7a3bb027b279071facdd02c14e9ed1814c9de3a9e \
+  --key hash-6bb3dcbde7218c1471a0387e2f20a1db55b7d98df3b27ce32e342c0bd12357e8#!/bin/bash
 
 # Fixed RPC script: calculate-dicts-proper.sh
 

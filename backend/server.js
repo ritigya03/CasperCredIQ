@@ -7,6 +7,8 @@ import crypto from 'crypto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import auditEventsService from './utils/auditEventsService.js';
+import { decodeEvent } from './utils/eventDecoder.js';
 
 const {
   CasperClient,
@@ -2919,6 +2921,186 @@ app.post('/api/issue-credential', async (req, res) => {
   }
 });
 
+// ==================== AUDIT LOG ENDPOINTS ====================
+
+/**
+ * Get all audit events from blockchain
+ * Uses Odra's __events dictionary storage
+ */
+app.get('/api/audit/events', async (req, res) => {
+  try {
+    console.log('📋 Fetching all audit events from blockchain...');
+
+    const events = await auditEventsService.fetchAllEvents();
+
+    res.json({
+      success: true,
+      count: events.length,
+      events,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error fetching audit events:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get event statistics
+ */
+app.get('/api/audit/stats', async (req, res) => {
+  try {
+    console.log('📊 Fetching audit event statistics...');
+
+    const stats = await auditEventsService.getEventStats();
+
+    res.json({
+      success: true,
+      stats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error fetching event stats:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get events for a specific credential
+ */
+app.get('/api/audit/credential/:credentialId', async (req, res) => {
+  try {
+    const { credentialId } = req.params;
+    console.log(`📋 Fetching audit trail for credential ${credentialId}...`);
+
+    const auditTrail = await auditEventsService.getCredentialAuditTrail(
+      parseInt(credentialId)
+    );
+
+    res.json({
+      success: true,
+      ...auditTrail,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error fetching credential audit trail:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get events by type
+ */
+app.get('/api/audit/type/:eventType', async (req, res) => {
+  try {
+    const { eventType } = req.params;
+    console.log(`📋 Fetching events of type ${eventType}...`);
+
+    const events = await auditEventsService.fetchEventsByType(eventType);
+
+    res.json({
+      success: true,
+      eventType,
+      count: events.length,
+      events,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error fetching events by type:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get a single event by index
+ */
+app.get('/api/audit/event/:index', async (req, res) => {
+  try {
+    const { index } = req.params;
+    console.log(`📋 Fetching event at index ${index}...`);
+
+    const stateRootHash = await auditEventsService.getStateRootHash();
+    const event = await auditEventsService.fetchEventByIndex(
+      stateRootHash,
+      parseInt(index)
+    );
+
+    res.json({
+      success: true,
+      index: parseInt(index),
+      event,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error fetching event:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get only AuditLogCreated events
+ */
+app.get('/api/audit/logs', async (req, res) => {
+  try {
+    console.log('📋 Fetching AuditLogCreated events...');
+
+    const auditLogs = await auditEventsService.fetchAuditLogs();
+
+    res.json({
+      success: true,
+      count: auditLogs.length,
+      auditLogs,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error fetching audit logs:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get event count
+ */
+app.get('/api/audit/count', async (req, res) => {
+  try {
+    console.log('📊 Fetching event count...');
+
+    const stateRootHash = await auditEventsService.getStateRootHash();
+    const count = await auditEventsService.getEventsCount(stateRootHash);
+
+    res.json({
+      success: true,
+      count,
+      stateRootHash,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error fetching event count:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // ==================== START SERVER ====================
 
 async function startServer() {
@@ -2960,6 +3142,15 @@ async function startServer() {
     console.log(`   GET  /api/verify/complete/:id      - Complete verification`);
     console.log(`   POST /api/ai/verify                - AI verification standalone`);
     console.log(`   POST /api/issue-credential         - Complete credential issuance`);
+
+    console.log(`\n📋 Audit Log Endpoints:`);
+    console.log(`   GET  /api/audit/events             - Get all events from blockchain`);
+    console.log(`   GET  /api/audit/stats              - Get event statistics`);
+    console.log(`   GET  /api/audit/logs               - Get AuditLogCreated events`);
+    console.log(`   GET  /api/audit/count              - Get total event count`);
+    console.log(`   GET  /api/audit/event/:index       - Get event by index`);
+    console.log(`   GET  /api/audit/credential/:id     - Get audit trail for credential`);
+    console.log(`   GET  /api/audit/type/:eventType    - Get events by type`);
 
     console.log(`\n💡 Quick Test:`);
     console.log(`   curl http://localhost:${PORT}/health`);
