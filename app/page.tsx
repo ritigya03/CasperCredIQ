@@ -87,7 +87,7 @@ const CardContent = ({ children, className = "" }) => {
 
 // Contract Hash Component
 const ContractHashDisplay = () => {
-  const contractHash = "971986539f375a9c7da1879177f11c5fa8b0a28f50ae61e93480a3522ce347c7";
+  const contractHash = "7375d3d1d28854233133b882cd2ea15596ab8ab6c15277fa569c3c245f30cdcd";
   const [copied, setCopied] = useState(false);
 
   const copyToClipboard = () => {
@@ -164,7 +164,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col font-sans bg-gradient-to-br from-gray-50 via-white to-blue-50">
+    <div className="flex min-h-screen flex-col font-sans">
       <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/90 backdrop-blur-xl">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
           <Link href="/" className="flex items-center gap-2">
@@ -585,7 +585,7 @@ export default function LandingPage() {
               <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-lg">
                 <Database className="h-4 w-4" />
                 <code className="text-sm font-mono ">
-                  afd7ca51f8ab1d415b7abf2439074924...c4a1a
+                  7375d3d1d28854233133b882cd2ea15596ab8ab6c15277fa569c3c245f30cdcd
                 </code>
               </div>
             </div>
@@ -634,7 +634,7 @@ export default function LandingPage() {
               © 2026 CasperCredIQ Protocol • Built for Enterprise Security on Casper Network
             </p>
             <p className="text-xs text-gray-600 mt-2">
-              Contract: afd7ca51f8ab1d415b7abf2439074924bd486ad12f0babfdf539e891ef6c4a1a
+              Contract: 7375d3d1d28854233133b882cd2ea15596ab8ab6c15277fa569c3c245f30cdcd
             </p>
           </div>
         </div>

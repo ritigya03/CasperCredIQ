@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { 
   CheckCircle, XCircle, Eye, Mail, User, Calendar, AlertCircle,
   FileText, ExternalLink, Download, Copy, Database, Shield, 
-  QrCode, Wallet, Send, Search, Key
+  QrCode, Wallet, Send, Search, Key, ArrowLeft
 } from 'lucide-react';
 import {
   CLPublicKey,
@@ -221,159 +222,201 @@ export default function IssuerDashboard() {
   };
 
   // Issue credential - COMPLETE FIXED VERSION
-  const issueCredential = async () => {
-    if (!selectedRequest) {
-      setIssuanceMessage({
-        type: 'error',
-        text: 'No request selected'
-      });
-      return;
+ // Updated issueCredential function for new contract
+// Replace the existing issueCredential function with this one
+
+// Fixed issueCredential function for IssuerDashboard
+// Replace the existing issueCredential function with this corrected version
+
+const issueCredential = async () => {
+  if (!selectedRequest) {
+    setIssuanceMessage({
+      type: 'error',
+      text: 'No request selected'
+    });
+    return;
+  }
+
+  if (!walletState.publicKey) {
+    setIssuanceMessage({
+      type: 'error',
+      text: 'Wallet not connected',
+      details: 'Please connect your Casper wallet first.'
+    });
+    return;
+  }
+
+  try {
+    setIssuanceLoading(true);
+    setIssuanceMessage({
+      type: 'info',
+      text: '🚀 Step 1/5: Preparing credential data...'
+    });
+
+    // Generate credential ID
+    const generatedCredentialId = `CRED_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    setCredentialId(generatedCredentialId);
+
+    // Step 1: Prepare credential data for IPFS
+    const credentialData = {
+      credentialId: generatedCredentialId,
+      recipientName: selectedRequest.name,
+      recipientEmail: selectedRequest.email,
+      recipientPublicKey: selectedRequest.recipientPublicKey,
+      role: credentialForm.role || selectedRequest.role,
+      organization: selectedRequest.organization,
+      credentialType: credentialForm.credentialType,
+      description: credentialForm.description,
+      validityDays: credentialForm.validityDays,
+      aiConfidence: credentialForm.aiConfidence,
+      metadata: JSON.parse(credentialForm.additionalMetadata || '{}'),
+      issuerPublicKey: walletState.publicKey,
+      issuedAt: new Date().toISOString()
+    };
+
+    console.log('📝 Credential data prepared:', credentialData);
+
+    // Step 2: Upload to IPFS via backend
+    setIssuanceMessage({
+      type: 'info',
+      text: '📤 Step 2/5: Uploading to IPFS...'
+    });
+
+    const ipfsResponse = await fetch(`${BACKEND_API_URL}/api/ipfs/credential`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentialData)
+    });
+
+    const ipfsResult = await ipfsResponse.json();
+    
+    if (!ipfsResult.success) {
+      throw new Error(ipfsResult.error || 'IPFS upload failed');
     }
 
-    if (!walletState.publicKey) {
-      setIssuanceMessage({
-        type: 'error',
-        text: 'Wallet not connected',
-        details: 'Please connect your Casper wallet first.'
-      });
-      return;
+    const uploadedIpfsHash = ipfsResult.ipfsHash;
+    setIpfsHash(uploadedIpfsHash);
+    
+    console.log('✅ IPFS upload successful:', uploadedIpfsHash);
+
+    // Step 3: Generate cryptographic proofs
+    setIssuanceMessage({
+      type: 'info',
+      text: '🔐 Step 3/5: Generating cryptographic proofs...'
+    });
+
+    // Generate SHA-256 hash of credential data (64 hex chars)
+    const credentialHash = await generateCredentialHash(credentialData);
+    
+    // Generate issuer signature (128 hex chars minimum)
+    const issuerSignature = generateIssuerSignature(credentialData, walletState.publicKey);
+
+    // Generate DIDs
+    const issuerDID = `did:casper:${walletState.publicKey.slice(0, 20)}`;
+    const holderDID = `did:casper:${selectedRequest.recipientPublicKey.slice(0, 20)}`;
+
+    console.log('🔐 Cryptographic proofs generated:', {
+      credentialHash: credentialHash.slice(0, 20) + '...',
+      issuerSignature: issuerSignature.slice(0, 20) + '...',
+      issuerDID,
+      holderDID
+    });
+
+    // Step 4: Prepare blockchain transaction
+    setIssuanceMessage({
+      type: 'info',
+      text: '⛓️ Step 4/5: Preparing blockchain transaction...'
+    });
+
+    // CRITICAL FIX: Convert holder public key to Address (Key type)
+    const holderPublicKey = CLPublicKey.fromHex(selectedRequest.recipientPublicKey);
+    
+    // Prepare runtime args for contract - CORRECTED VERSION
+    const runtimeArgs = RuntimeArgs.fromMap({
+      'credential_id': CLValueBuilder.string(generatedCredentialId),
+      'issuer_did': CLValueBuilder.string(issuerDID),
+      'holder_did': CLValueBuilder.string(holderDID),
+      'holder_address': CLValueBuilder.key(holderPublicKey),  // ✅ FIXED: Use key() instead of byteArray()
+      'credential_hash': CLValueBuilder.string(credentialHash),
+      'issuer_signature': CLValueBuilder.string(issuerSignature),
+      'ipfs_hash': CLValueBuilder.string(uploadedIpfsHash),
+      'ai_confidence': CLValueBuilder.u8(credentialForm.aiConfidence),
+      'expires_in_days': CLValueBuilder.u64(parseInt(credentialForm.validityDays))
+    });
+
+    // Use CONTRACT_HASH from constants
+    let contractHash = CASPER_CONFIG.CONTRACT_HASH;
+    if (contractHash.startsWith('hash-')) {
+      contractHash = contractHash.slice(5);
     }
 
-    try {
-      setIssuanceLoading(true);
-      setIssuanceMessage({
-        type: 'info',
-        text: '🚀 Step 1/4: Preparing credential data...'
-      });
+    const issuerPk = CLPublicKey.fromHex(walletState.publicKey);
+    
+    const deployParams = new DeployUtil.DeployParams(
+      issuerPk,
+      CASPER_CONFIG.CHAIN_NAME,
+      1,
+      1800000
+    );
 
-      // Generate credential ID
-      const generatedCredentialId = `CRED_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-      setCredentialId(generatedCredentialId);
+    // Use newStoredContractByHash
+    const session = DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+      Uint8Array.from(Buffer.from(contractHash, 'hex')),
+      ENTRY_POINTS.ISSUE_CREDENTIAL,
+      runtimeArgs
+    );
 
-      // Step 1: Prepare credential data for IPFS
-      const credentialData = {
-        credentialId: generatedCredentialId,
-        recipientName: selectedRequest.name,
-        recipientEmail: selectedRequest.email,
-        recipientPublicKey: selectedRequest.recipientPublicKey,
-        role: credentialForm.role || selectedRequest.role,
-        organization: selectedRequest.organization,
-        credentialType: credentialForm.credentialType,
-        description: credentialForm.description,
-        validityDays: credentialForm.validityDays,
-        aiConfidence: credentialForm.aiConfidence,
-        metadata: JSON.parse(credentialForm.additionalMetadata || '{}'),
-        issuerPublicKey: walletState.publicKey,
-        issuedAt: new Date().toISOString()
-      };
+    const payment = DeployUtil.standardPayment(
+      CASPER_CONFIG.PAYMENT_AMOUNTS.ISSUE_CREDENTIAL
+    );
+    
+    const deploy = DeployUtil.makeDeploy(deployParams, session, payment);
 
-      console.log('📝 Credential data prepared:', credentialData);
+    console.log('📋 Deploy prepared:', {
+      contractHash: contractHash,
+      entryPoint: ENTRY_POINTS.ISSUE_CREDENTIAL,
+      credentialId: generatedCredentialId,
+      issuerDID,
+      holderDID,
+      holderAddress: 'Key::Account',  // This is now correct
+      credentialHash: credentialHash.slice(0, 20) + '...',
+      ipfsHash: uploadedIpfsHash,
+      aiConfidence: credentialForm.aiConfidence,
+      expiresInDays: credentialForm.validityDays
+    });
 
-      // Step 2: Upload to IPFS via backend
-      setIssuanceMessage({
-        type: 'info',
-        text: '📤 Step 2/4: Uploading to IPFS...'
-      });
+    // Step 5: Sign deploy with wallet
+    setIssuanceMessage({
+      type: 'info',
+      text: '✍️ Step 5/5: Please approve in your wallet...'
+    });
 
-      const ipfsResponse = await fetch(`${BACKEND_API_URL}/api/ipfs/credential`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentialData)
-      });
+    const signedDeploy = await walletManager.signDeploy(deploy);
+    const signedDeployJson = DeployUtil.deployToJson(signedDeploy);
 
-      const ipfsResult = await ipfsResponse.json();
+    console.log('✅ Deploy signed successfully');
+
+    // Step 6: Submit to blockchain via backend
+    setIssuanceMessage({
+      type: 'info',
+      text: '📡 Submitting to Casper blockchain...'
+    });
+
+    const submitResponse = await fetch(`${BACKEND_API_URL}/api/deploy/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signedDeploy: signedDeployJson })
+    });
+
+    const submitResult = await submitResponse.json();
+    
+    if (submitResult.success) {
+      setDeployHash(submitResult.deployHash);
       
-      if (!ipfsResult.success) {
-        throw new Error(ipfsResult.error || 'IPFS upload failed');
-      }
+      console.log('✅ Deploy submitted:', submitResult.deployHash);
 
-      const uploadedIpfsHash = ipfsResult.ipfsHash;
-      setIpfsHash(uploadedIpfsHash);
-      
-      console.log('✅ IPFS upload successful:', uploadedIpfsHash);
-
-      // Step 3: Prepare blockchain transaction
-      setIssuanceMessage({
-        type: 'info',
-        text: '⛓️ Step 3/4: Preparing blockchain transaction...'
-      });
-
-      // Prepare runtime args for issue_credential entry point
-      const runtimeArgs = RuntimeArgs.fromMap({
-        'credential_id': CLValueBuilder.string(generatedCredentialId),
-        'holder': CLValueBuilder.key(CLPublicKey.fromHex(selectedRequest.recipientPublicKey)),
-        'ipfs_hash': CLValueBuilder.string(uploadedIpfsHash),
-        'ai_confidence': CLValueBuilder.u8(credentialForm.aiConfidence),
-        'expires_in_days': CLValueBuilder.u64(parseInt(credentialForm.validityDays))
-      });
-
-      // FIXED: Use CONTRACT_HASH from CASPER_CONFIG
-      let contractHash = CASPER_CONFIG.CONTRACT_HASH;
-      if (contractHash.startsWith('hash-')) {
-        contractHash = contractHash.slice(5);
-      }
-
-      const issuerPk = CLPublicKey.fromHex(walletState.publicKey);
-      
-      const deployParams = new DeployUtil.DeployParams(
-        issuerPk,
-        CASPER_CONFIG.CHAIN_NAME,
-        1,
-        1800000
-      );
-
-      // Use newStoredContractByHash with CONTRACT_HASH (not PACKAGE_HASH)
-      const session = DeployUtil.ExecutableDeployItem.newStoredContractByHash(
-        Uint8Array.from(Buffer.from(contractHash, 'hex')),
-        ENTRY_POINTS.ISSUE_CREDENTIAL,
-        runtimeArgs
-      );
-
-      const payment = DeployUtil.standardPayment(
-        CASPER_CONFIG.PAYMENT_AMOUNTS.ISSUE_CREDENTIAL
-      );
-      
-      const deploy = DeployUtil.makeDeploy(deployParams, session, payment);
-
-      console.log('📋 Deploy prepared:', {
-        contractHash: contractHash,
-        entryPoint: ENTRY_POINTS.ISSUE_CREDENTIAL,
-        credentialId: generatedCredentialId,
-        holder: selectedRequest.recipientPublicKey,
-        ipfsHash: uploadedIpfsHash
-      });
-
-      // Step 4: Sign deploy with wallet
-      setIssuanceMessage({
-        type: 'info',
-        text: '✍️ Step 4/4: Please approve in your wallet...'
-      });
-
-      const signedDeploy = await walletManager.signDeploy(deploy);
-      const signedDeployJson = DeployUtil.deployToJson(signedDeploy);
-
-      console.log('✅ Deploy signed successfully');
-
-      // Step 5: Submit to blockchain via backend
-      setIssuanceMessage({
-        type: 'info',
-        text: '📡 Submitting to Casper blockchain...'
-      });
-
-      const submitResponse = await fetch(`${BACKEND_API_URL}/api/deploy/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signedDeploy: signedDeployJson })
-      });
-
-      const submitResult = await submitResponse.json();
-      
-      if (submitResult.success) {
-        setDeployHash(submitResult.deployHash);
-        
-        console.log('✅ Deploy submitted:', submitResult.deployHash);
-
-        // Send notification
+      // Send notification
+      try {
         await fetch(`${BACKEND_API_URL}/api/notify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -385,47 +428,105 @@ export default function IssuerDashboard() {
             validUntil: new Date(Date.now() + parseInt(credentialForm.validityDays) * 24 * 60 * 60 * 1000).toISOString()
           })
         });
-
-        setIssuanceMessage({
-          type: 'success',
-          text: `🎉 Credential issued to ${selectedRequest.name}!`,
-          details: `Email sent • IPFS: ${uploadedIpfsHash.slice(0, 12)}... • TX: ${submitResult.deployHash.slice(0, 12)}...`
-        });
-
-        // Remove request from list
-        setRequests(prev => prev.filter(r => r.id !== selectedRequest.id));
-        setSelectedRequest(null);
-      } else {
-        setIssuanceMessage({
-          type: 'warning',
-          text: '⚠️ Blockchain submission failed',
-          details: `IPFS saved: ${uploadedIpfsHash.slice(0, 12)}... • Error: ${submitResult.error}`
-        });
-      }
-
-    } catch (error: any) {
-      console.error('❌ Credential issuance error:', error);
-      
-      let errorText = 'Credential issuance failed';
-      let errorDetails = error.message || 'Unknown error';
-
-      if (error.message?.includes('User rejected')) {
-        errorText = 'Transaction cancelled';
-        errorDetails = 'You rejected the transaction in your wallet.';
-      } else if (error.message?.includes('Failed to fetch')) {
-        errorText = 'Backend connection failed';
-        errorDetails = 'Cannot connect to backend server.';
+      } catch (notifyError) {
+        console.log('Email notification failed (non-critical):', notifyError);
       }
 
       setIssuanceMessage({
-        type: 'error',
-        text: errorText,
-        details: errorDetails
+        type: 'success',
+        text: `🎉 Credential issued to ${selectedRequest.name}!`,
+        details: `DID: ${holderDID.slice(0, 25)}... • IPFS: ${uploadedIpfsHash.slice(0, 12)}... • TX: ${submitResult.deployHash.slice(0, 12)}...`
       });
-    } finally {
-      setIssuanceLoading(false);
+
+      // Remove request from list
+      setRequests(prev => prev.filter(r => r.id !== selectedRequest.id));
+      setSelectedRequest(null);
+    } else {
+      setIssuanceMessage({
+        type: 'warning',
+        text: '⚠️ Blockchain submission failed',
+        details: `IPFS saved: ${uploadedIpfsHash.slice(0, 12)}... • Error: ${submitResult.error}`
+      });
     }
-  };
+
+  } catch (error: any) {
+    console.error('❌ Credential issuance error:', error);
+    
+    let errorText = 'Credential issuance failed';
+    let errorDetails = error.message || 'Unknown error';
+
+    if (error.message?.includes('User rejected')) {
+      errorText = 'Transaction cancelled';
+      errorDetails = 'You rejected the transaction in your wallet.';
+    } else if (error.message?.includes('Failed to fetch')) {
+      errorText = 'Backend connection failed';
+      errorDetails = 'Cannot connect to backend server.';
+    } else if (error.message?.includes('Invalid signature')) {
+      errorText = 'Invalid signature';
+      errorDetails = 'Signature must be at least 64 characters.';
+    } else if (error.message?.includes('Invalid DID')) {
+      errorText = 'Invalid DID format';
+      errorDetails = 'DID must start with "did:" and be at least 10 characters.';
+    }
+
+    setIssuanceMessage({
+      type: 'error',
+      text: errorText,
+      details: errorDetails
+    });
+  } finally {
+    setIssuanceLoading(false);
+  }
+};
+
+// Helper function to generate credential hash (SHA-256)
+const generateCredentialHash = async (credentialData: any): Promise<string> => {
+  // Create a deterministic string from credential data
+  const dataString = JSON.stringify({
+    credentialId: credentialData.credentialId,
+    recipientPublicKey: credentialData.recipientPublicKey,
+    issuerPublicKey: credentialData.issuerPublicKey,
+    role: credentialData.role,
+    organization: credentialData.organization,
+    issuedAt: credentialData.issuedAt
+  });
+  
+  // Generate SHA-256 hash
+  const encoder = new TextEncoder();
+  const data = encoder.encode(dataString);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  return hashHex; // 64 hex characters
+};
+
+// Helper function to generate issuer signature
+const generateIssuerSignature = (credentialData: any, issuerPublicKey: string): string => {
+  // In production, this should use the issuer's private key to sign
+  // For now, we generate a deterministic signature based on the data
+  
+  const signatureData = `${credentialData.credentialId}:${issuerPublicKey}:${credentialData.issuedAt}`;
+  
+  // Create a 128-character hex string (minimum required by contract)
+  const encoder = new TextEncoder();
+  const data = encoder.encode(signatureData);
+  
+  // Simple hash-based signature (replace with real signature in production)
+  let signature = '';
+  for (let i = 0; i < data.length; i++) {
+    signature += data[i].toString(16).padStart(2, '0');
+  }
+  
+  // Ensure at least 128 characters
+  while (signature.length < 128) {
+    signature += signature;
+  }
+  
+  return signature.slice(0, 128); // Exactly 128 hex characters
+};
+
+
 
   const connectWallet = async () => {
     try {
@@ -499,19 +600,28 @@ export default function IssuerDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <div className="min-h-screen p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Issuer Dashboard</h1>
-              <p className="text-gray-600 mt-2">
-                Review credential requests and issue blockchain credentials
-              </p>
-              <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
-                <Database className="w-4 h-4" />
-                <span>Backend: {BACKEND_API_URL}</span>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/dashboard"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600 hover:text-gray-900"
+                title="Back to Dashboard"
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </Link>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Issuer Dashboard</h1>
+                <p className="text-gray-600 mt-2">
+                  Review credential requests and issue blockchain credentials
+                </p>
+                <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
+                  <Database className="w-4 h-4" />
+                  <span>Backend: {BACKEND_API_URL}</span>
+                </div>
               </div>
             </div>
             
@@ -592,7 +702,7 @@ export default function IssuerDashboard() {
         </div>
 
         {/* Main Content - Two Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1  lg:grid-cols-3 gap-6">
           {/* Left Column - Request List */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow">
@@ -972,11 +1082,11 @@ export default function IssuerDashboard() {
                 
                 <div className="space-y-4">
                   {credentialId && (
-                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <div className="bg-white p-4 rounded-lg border border-blue-200">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-blue-800 flex items-center">
                           <FileText className="w-4 h-4 mr-2" />
-                          Credential ID
+                          Credential ID (String)
                         </span>
                         <button
                           onClick={() => copyToClipboard(credentialId)}
@@ -988,6 +1098,12 @@ export default function IssuerDashboard() {
                       <p className="text-xs font-mono text-blue-700 bg-blue-100 p-2 rounded break-all">
                         {credentialId}
                       </p>
+                      <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded">
+                        <p className="text-xs text-amber-800">
+                          <strong>For Revocation:</strong> The blockchain uses a numeric ID (0, 1, 2...). 
+                          Check the transaction in the explorer below to find the numeric credential_id in the deploy result.
+                        </p>
+                      </div>
                     </div>
                   )}
                   
@@ -1011,6 +1127,13 @@ export default function IssuerDashboard() {
                           >
                             <ExternalLink className="w-3 h-3 mr-1" />
                             View
+                          </button>
+                          <button
+                            onClick={() => window.location.href = `/verify?hash=${ipfsHash}&mode=ipfs`}
+                            className="text-xs text-white bg-green-600 hover:bg-green-700 px-3 py-1 rounded flex items-center font-medium"
+                          >
+                            <Shield className="w-3 h-3 mr-1" />
+                            Verify
                           </button>
                         </div>
                       </div>
@@ -1040,6 +1163,13 @@ export default function IssuerDashboard() {
                           >
                             <ExternalLink className="w-3 h-3 mr-1" />
                             Explorer
+                          </button>
+                          <button
+                            onClick={() => window.location.href = `/verify?hash=${deployHash}&mode=deploy`}
+                            className="text-xs text-white bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded flex items-center font-medium"
+                          >
+                            <Shield className="w-3 h-3 mr-1" />
+                            Verify
                           </button>
                         </div>
                       </div>

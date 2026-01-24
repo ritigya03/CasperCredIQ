@@ -1,116 +1,348 @@
-// src/app/admin/page.tsx
+"use client";
+
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import WalletConnect from '../../components/WalletConnect';
-import AdminPanel from '../../components/AdminPanel';
+import { Shield, XCircle, Search, AlertCircle, CheckCircle, Wallet, FileText, ArrowLeft } from 'lucide-react';
+import { walletManager } from '../../lib/wallet';
+import { CASPER_CONFIG, ENTRY_POINTS } from '../../utils/constants';
+import {
+  CLPublicKey,
+  RuntimeArgs,
+  CLValueBuilder,
+  DeployUtil,
+} from 'casper-js-sdk';
 
 export default function AdminPage() {
+  const [credentialId, setCredentialId] = useState('');
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{
+    type: 'success' | 'error' | 'info' | 'warning';
+    text: string;
+    details?: string;
+  } | null>(null);
+  const [deployHash, setDeployHash] = useState<string | null>(null);
+  const [walletState, setWalletState] = useState(walletManager.getState());
+
+  useEffect(() => {
+    const unsubscribe = walletManager.subscribe(setWalletState);
+    walletManager.syncWithWallet().catch(console.error);
+    return unsubscribe;
+  }, []);
+
+  const revokeCredential = async () => {
+    if (!credentialId.trim()) {
+      setMessage({
+        type: 'error',
+        text: 'Please enter a credential ID'
+      });
+      return;
+    }
+
+    if (!reason.trim()) {
+      setMessage({
+        type: 'error',
+        text: 'Please provide a reason for revocation'
+      });
+      return;
+    }
+
+    if (!walletState.publicKey) {
+      setMessage({
+        type: 'error',
+        text: 'Wallet not connected',
+        details: 'Please connect your Casper wallet first.'
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setDeployHash(null);
+      setMessage({
+        type: 'info',
+        text: '🔄 Preparing revocation transaction...'
+      });
+
+      // Prepare runtime args
+      const runtimeArgs = RuntimeArgs.fromMap({
+        'credential_id': CLValueBuilder.u256(credentialId),
+        'reason': CLValueBuilder.string(reason)
+      });
+
+      // Get contract hash
+      let contractHash = CASPER_CONFIG.CONTRACT_HASH;
+      if (contractHash.startsWith('hash-')) {
+        contractHash = contractHash.slice(5);
+      }
+
+      const callerPk = CLPublicKey.fromHex(walletState.publicKey);
+
+      const deployParams = new DeployUtil.DeployParams(
+        callerPk,
+        CASPER_CONFIG.CHAIN_NAME,
+        1,
+        1800000
+      );
+
+      // Create session for revoke_credential entry point
+      const session = DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+        Uint8Array.from(Buffer.from(contractHash, 'hex')),
+        ENTRY_POINTS.REVOKE_CREDENTIAL,
+        runtimeArgs
+      );
+
+      const payment = DeployUtil.standardPayment(
+        CASPER_CONFIG.PAYMENT_AMOUNTS.REVOKE_CREDENTIAL
+      );
+
+      const deploy = DeployUtil.makeDeploy(deployParams, session, payment);
+
+      console.log('📋 Deploy prepared for revocation');
+
+      // Sign deploy with wallet
+      setMessage({
+        type: 'info',
+        text: '✍️ Please approve the transaction in your wallet...'
+      });
+
+      const signedDeploy = await walletManager.signDeploy(deploy);
+      const signedDeployJson = DeployUtil.deployToJson(signedDeploy);
+
+      console.log('✅ Deploy signed successfully');
+
+      // Submit to blockchain via backend
+      setMessage({
+        type: 'info',
+        text: '📡 Submitting to Casper blockchain...'
+      });
+
+      const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const submitResponse = await fetch(`${BACKEND_API_URL}/api/deploy/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signedDeploy: signedDeployJson })
+      });
+
+      const submitResult = await submitResponse.json();
+
+      if (submitResult.success) {
+        setDeployHash(submitResult.deployHash);
+
+        console.log('✅ Revocation deploy submitted:', submitResult.deployHash);
+
+        setMessage({
+          type: 'success',
+          text: `🎉 Credential ${credentialId} revoked successfully!`,
+          details: `Transaction hash: ${submitResult.deployHash.slice(0, 16)}...`
+        });
+
+        // Clear form
+        setCredentialId('');
+        setReason('');
+      } else {
+        setMessage({
+          type: 'error',
+          text: '⚠️ Blockchain submission failed',
+          details: submitResult.error || 'Unknown error occurred'
+        });
+      }
+
+    } catch (error: any) {
+      console.error('❌ Revocation error:', error);
+
+      let errorText = 'Revocation failed';
+      let errorDetails = error.message || 'Unknown error';
+
+      if (error.message?.includes('User rejected')) {
+        errorText = 'Transaction cancelled';
+        errorDetails = 'You rejected the transaction in your wallet.';
+      } else if (error.message?.includes('Failed to fetch')) {
+        errorText = 'Backend connection failed';
+        errorDetails = 'Cannot connect to backend server.';
+      }
+
+      setMessage({
+        type: 'error',
+        text: errorText,
+        details: errorDetails
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openExplorer = (hash: string) => {
+    const explorerUrl = CASPER_CONFIG.NETWORK?.EXPLORER_URL || 'https://testnet.cspr.live';
+    window.open(`${explorerUrl}/deploy/${hash}`, '_blank');
+  };
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 py-8">
-      <div className="max-w-6xl mx-auto px-4">
+    <div className="max-h-screen p-4 overflow-y-auto">
+      <div className="max-w-3xl mx-auto ">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              🛠️ Admin Dashboard
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Manage credentials and monitor the credential system
+        <div className="relative text-center mb-4 pt-4">
+          <Link
+            href="/dashboard"
+            className="absolute left-0 top-1/2 -translate-y-1/2 p-2 hover:bg-white/50 rounded-full transition-colors text-gray-600 hover:text-gray-900"
+            title="Back to Dashboard"
+          >
+            <ArrowLeft className="w-6 h-6" />
+          </Link>
+    
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">
+            Revoke Credential
+          </h1>
+     
+          {/* Access Level Note */}
+          <div className="mt-2 inline-block bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+            <p className="text-xs text-amber-800">
+              <strong>Access Required:</strong> Only credential issuers (Level 2+) and contract owner (Level 4) can revoke credentials
             </p>
           </div>
-          <div className="flex items-center space-x-4">
-            <Link
-              href="/"
-              className="inline-flex items-center px-4 py-2 text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg font-medium transition-colors"
+        </div>
+
+
+
+        {/* Revocation Form */}
+        <div className="bg-white rounded-lg shadow p-4 mb-4">
+          <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+            <XCircle className="w-5 h-5 text-red-600" />
+            Revoke Credential
+          </h2>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Credential ID (Numeric)
+              </label>
+              <input
+                type="number"
+                value={credentialId}
+                onChange={(e) => setCredentialId(e.target.value)}
+                placeholder="e.g., 0"
+                disabled={loading}
+                min="0"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:bg-gray-100"
+              />
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                <p className="font-medium text-blue-800 mb-1">💡 How to find the Credential ID:</p>
+                <ul className="text-blue-700 space-y-0.5 ml-4 list-disc">
+                  <li>The numeric ID starts at <strong>0</strong> and increments (0, 1, 2, 3...)</li>
+                  <li>Check the <strong>issue page</strong> - the ID is shown after issuing</li>
+                  <li>Look at the <strong>blockchain explorer</strong> in the deploy transaction</li>
+                  <li>First credential issued = ID 0, second = ID 1, etc.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Reason for Revocation
+              </label>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g., Credential compromised, Employee terminated, etc."
+                disabled={loading}
+                rows={2}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:bg-gray-100 resize-none"
+              />
+            </div>
+
+            <button
+              onClick={revokeCredential}
+              disabled={loading || !walletState.isConnected}
+              className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 px-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow"
             >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Main
-            </Link>
-            <WalletConnect />
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Revoking...
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Revoke Credential
+                </>
+              )}
+            </button>
+
+            <div className="text-xs text-gray-500 bg-gray-50 p-2.5 rounded-lg">
+              <p className="font-medium mb-1">⚠️ Warning:</p>
+              <p>Revoking a credential is permanent and cannot be undone.</p>
+              <p className="mt-1.5">
+                <strong>Cost:</strong> {CASPER_CONFIG.PAYMENT_AMOUNTS.REVOKE_CREDENTIAL / 1000000000} CSPR
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Admin Panel */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-              <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4">
-                <h2 className="text-xl font-bold text-white">Credential Management</h2>
-                <p className="text-purple-200 text-sm">Mint, revoke, and verify credentials</p>
+        {/* Status Message */}
+        {message && (
+          <div className={`rounded-lg shadow-lg p-6 mb-6 ${
+            message.type === 'success' ? 'bg-green-50 border-2 border-green-200' :
+            message.type === 'error' ? 'bg-red-50 border-2 border-red-200' :
+            message.type === 'warning' ? 'bg-yellow-50 border-2 border-yellow-200' :
+            'bg-blue-50 border-2 border-blue-200'
+          }`}>
+            <div className="flex items-start gap-3">
+              {message.type === 'success' ? <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0" /> :
+               message.type === 'error' ? <XCircle className="w-6 h-6 text-red-600 flex-shrink-0" /> :
+               message.type === 'warning' ? <AlertCircle className="w-6 h-6 text-yellow-600 flex-shrink-0" /> :
+               <AlertCircle className="w-6 h-6 text-blue-600 flex-shrink-0" />}
+              <div className="flex-1">
+                <p className={`font-medium ${
+                  message.type === 'success' ? 'text-green-800' :
+                  message.type === 'error' ? 'text-red-800' :
+                  message.type === 'warning' ? 'text-yellow-800' :
+                  'text-blue-800'
+                }`}>
+                  {message.text}
+                </p>
+                {message.details && (
+                  <p className={`text-sm mt-1 ${
+                    message.type === 'success' ? 'text-green-700' :
+                    message.type === 'error' ? 'text-red-700' :
+                    message.type === 'warning' ? 'text-yellow-700' :
+                    'text-blue-700'
+                  }`}>
+                    {message.details}
+                  </p>
+                )}
               </div>
-              <div className="p-6">
-                <AdminPanel />
+            </div>
+          </div>
+        )}
+
+        {/* Deploy Hash Result */}
+        {deployHash && (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              Revocation Successful
+            </h3>
+            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium text-purple-800 flex items-center">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Transaction Hash
+                </span>
+                <button
+                  onClick={() => openExplorer(deployHash)}
+                  className="text-xs text-purple-600 hover:text-purple-800 px-2 py-1 bg-purple-100 rounded flex items-center gap-1"
+                >
+                  <Search className="w-3 h-3" />
+                  View in Explorer
+                </button>
               </div>
+              <p className="text-xs font-mono text-purple-700 bg-purple-100 p-2 rounded break-all">
+                {deployHash}
+              </p>
             </div>
           </div>
-
-          {/* Sidebar - Admin Info */}
-          <div className="space-y-6">
-            {/* Admin Status Card */}
-            <div className="bg-white p-6 rounded-xl shadow-md">
-              <h3 className="text-lg font-bold mb-4 flex items-center">
-                <svg className="w-5 h-5 mr-2 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                Admin Privileges
-              </h3>
-              <ul className="space-y-2 text-sm text-gray-700">
-                <li className="flex items-start">
-                  <svg className="w-4 h-4 mt-0.5 mr-2 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  <span>Issue new credentials with roles</span>
-                </li>
-                <li className="flex items-start">
-                  <svg className="w-4 h-4 mt-0.5 mr-2 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  <span>Revoke existing credentials</span>
-                </li>
-                <li className="flex items-start">
-                  <svg className="w-4 h-4 mt-0.5 mr-2 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  <span>Verify any user's credential status</span>
-                </li>
-              </ul>
-            </div>
-
-
-            {/* Warning Card */}
-            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-              <h4 className="font-bold text-yellow-900 mb-2 flex items-center">
-                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                Important Notes
-              </h4>
-              <ul className="text-sm text-yellow-800 space-y-1">
-                <li>• Only the issuer address can perform admin actions</li>
-                <li>• Each transaction costs gas (CSPR)</li>
-                <li>• Blockchain confirmations take 1-2 minutes</li>
-                <li>• Revocation is permanent and cannot be undone</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* Contract Info Footer */}
-        <div className="mt-8 bg-white rounded-xl shadow-md p-6">
-          <h3 className="font-bold text-gray-900 mb-4">Contract Information</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Contract Hash</p>
-           
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Network</p>
-              <p className="text-sm font-medium text-gray-900">Casper Testnet</p>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
-    </main>
+    </div>
   );
 }

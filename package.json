@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "backend": "node server.js",
+    "backend": "cd backend && node server.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run backend\"",
     "build": "next build",
     "start": "next start",

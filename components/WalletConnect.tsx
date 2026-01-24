@@ -75,7 +75,7 @@ export default function WalletConnect({ onConnect }: WalletConnectProps) {  // A
         </span>
         <button
           onClick={disconnect}
-          className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+          className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors text-sm"
         >
           Disconnect
         </button>
@@ -88,7 +88,7 @@ export default function WalletConnect({ onConnect }: WalletConnectProps) {  // A
     <button
       onClick={connect}
       disabled={loading}
-      className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+      className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg disabled:opacity-50 transition-colors font-medium shadow-sm"
     >
       {loading ? 'Connecting...' : 'Connect Wallet'}
     </button>

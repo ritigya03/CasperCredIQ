@@ -1,227 +1,163 @@
 #!/usr/bin/env node
 
-/**
- * CasperCredIQ Verification Script
- * Uses Odra's built-in contract methods instead of manual dictionary queries
- */
+// Query any credential by calculating its dictionary key
+// Usage: node query_credential.js CRED-001
 
-const { CasperClient, CLPublicKey, Contracts } = require('casper-js-sdk');
+const crypto = require('crypto');
+const { execSync } = require('child_process');
 
-// Configuration
-const NODE_URL = 'http://65.109.83.79:7777/rpc';
-const CONTRACT_HASH = 'hash-YOUR_CONTRACT_HASH_HERE'; // Replace with your actual contract hash
+const NODE_URL = "http://65.109.83.79:7777";
+const STATE_UREF = "uref-503935b580f453cbf77c844665415b00295f233e3ffa954065bb07c30536fffa-007";
+const FIELD_NAME = "__CasperCredIQ__credentials";
 
-// Test credentials to verify
-const TEST_CREDENTIALS = [
-  'TEST_VERIFY_01',
-  'FRESH_TEST'
-];
+if (process.argv.length < 3) {
+  console.log("Usage: node query_credential.js <CREDENTIAL_ID>");
+  console.log("Example: node query_credential.js CRED-001");
+  process.exit(1);
+}
 
-// Initialize Casper client
-const client = new CasperClient(NODE_URL);
-const contract = new Contracts.Contract(client);
+const CREDENTIAL_ID = process.argv[2];
 
-async function main() {
-  console.log('🔍 CasperCredIQ Credential Verification');
-  console.log('========================================\n');
+// Helper: Convert hex string to bytes
+function hexToBytes(hex) {
+  const bytes = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes.push(parseInt(hex.substr(i, 2), 16));
+  }
+  return Buffer.from(bytes);
+}
+
+// Helper: Blake2b hash (256-bit)
+function blake2b256(data) {
+  return crypto.createHash('blake2b512')
+    .update(data)
+    .digest()
+    .slice(0, 32);
+}
+
+// Calculate dictionary key using Odra's formula
+function calculateDictionaryKey(stateUref, fieldName, itemKey) {
+  // Step 1: Extract URef bytes (remove "uref-" prefix and "-007" suffix)
+  const hexPart = stateUref.replace('uref-', '').split('-')[0];
+  const urefBytes = hexToBytes(hexPart);
   
-  try {
-    // Set contract hash
-    contract.setContractHash(CONTRACT_HASH);
-    
-    for (const credId of TEST_CREDENTIALS) {
-      await verifyCredential(credId);
-      console.log('\n' + '='.repeat(80) + '\n');
-    }
-    
-  } catch (error) {
-    console.error('❌ Error:', error.message);
+  // Step 2: Hash the field name
+  const fieldHash = blake2b256(Buffer.from(fieldName, 'utf8'));
+  
+  // Step 3: Prepare item key bytes
+  const itemKeyBytes = Buffer.from(itemKey, 'utf8');
+  
+  // Step 4: Concatenate and hash
+  const combined = Buffer.concat([urefBytes, fieldHash, itemKeyBytes]);
+  const finalHash = blake2b256(combined);
+  
+  return 'dictionary-' + finalHash.toString('hex');
+}
+
+// Calculate the dictionary key
+const dictionaryKey = calculateDictionaryKey(STATE_UREF, FIELD_NAME, CREDENTIAL_ID);
+
+console.log('🔍 Querying credential:', CREDENTIAL_ID);
+console.log('📋 Calculated dictionary key:', dictionaryKey);
+console.log('');
+
+// Get state root hash
+const stateRootCmd = `casper-client get-state-root-hash --node-address ${NODE_URL} | jq -r '.result.state_root_hash'`;
+const stateRoot = execSync(stateRootCmd).toString().trim();
+
+// Query the credential
+const queryCmd = `casper-client query-global-state \\
+  --node-address ${NODE_URL} \\
+  --state-root-hash ${stateRoot} \\
+  --key ${dictionaryKey}`;
+
+try {
+  const result = execSync(queryCmd).toString();
+  const data = JSON.parse(result);
+  
+  if (data.error) {
+    console.log('❌ Credential not found');
+    console.log('Error:', data.error.message);
     process.exit(1);
   }
+  
+  // Parse the credential data
+  const parsed = data.result.stored_value.CLValue.parsed;
+  
+  console.log('='.repeat(60));
+  console.log('CREDENTIAL DETAILS');
+  console.log('='.repeat(60));
+  
+  parseCredential(parsed);
+  
+} catch (error) {
+  console.log('❌ Failed to query credential');
+  console.log('Error:', error.message);
+  process.exit(1);
 }
 
-/**
- * Verify a credential using Odra contract methods
- */
-async function verifyCredential(credentialId) {
-  console.log(`📋 Verifying: ${credentialId}`);
-  console.log('-'.repeat(80));
+function parseCredential(data) {
+  let idx = 0;
   
-  try {
-    // 1. Quick validity check
-    const isValid = await callContractMethod('verify_credential', [credentialId]);
-    console.log(`\n✨ Quick Check: ${isValid ? '✅ VALID' : '❌ INVALID'}`);
-    
-    // 2. Get holder address
-    const holder = await callContractMethod('get_holder', [credentialId]);
-    console.log(`\n👤 Holder:`);
-    if (holder) {
-      console.log(`   ${holder}`);
-    } else {
-      console.log(`   ⚠️  Credential not found`);
-      return;
-    }
-    
-    // 3. Get issuer address
-    const issuer = await callContractMethod('get_issuer', [credentialId]);
-    console.log(`\n🏢 Issuer:`);
-    console.log(`   ${issuer || 'N/A'}`);
-    
-    // 4. Get AI confidence score
-    const confidence = await callContractMethod('get_confidence', [credentialId]);
-    console.log(`\n🤖 AI Confidence Score:`);
-    if (confidence !== null) {
-      console.log(`   ${confidence}/100`);
-      console.log(`   ${'█'.repeat(Math.floor(confidence/5))}${'░'.repeat(20 - Math.floor(confidence/5))} ${confidence}%`);
-    } else {
-      console.log(`   ⚠️  Access denied or not available`);
-    }
-    
-    // 5. Check revocation status
-    const isRevoked = await callContractMethod('is_revoked', [credentialId]);
-    console.log(`\n🚫 Revocation Status:`);
-    if (isRevoked !== null) {
-      console.log(`   ${isRevoked ? '❌ REVOKED' : '✅ Active'}`);
-    } else {
-      console.log(`   ⚠️  Access denied or not available`);
-    }
-    
-    // 6. Get expiry timestamp
-    const expiry = await callContractMethod('get_expiry', [credentialId]);
-    console.log(`\n⏰ Expiry:`);
-    if (expiry !== null) {
-      const expiryDate = new Date(Number(expiry));
-      const now = new Date();
-      const isExpired = now > expiryDate;
-      
-      console.log(`   Date: ${expiryDate.toLocaleString()}`);
-      console.log(`   Status: ${isExpired ? '❌ EXPIRED' : '✅ Valid'}`);
-      
-      if (!isExpired) {
-        const daysLeft = Math.floor((expiryDate - now) / (1000 * 60 * 60 * 24));
-        console.log(`   Days remaining: ${daysLeft}`);
-      }
-    } else {
-      console.log(`   ⚠️  Access denied or not available`);
-    }
-    
-    // 7. Get IPFS hash
-    const ipfsHash = await callContractMethod('get_ipfs_hash', [credentialId]);
-    console.log(`\n📎 IPFS Hash:`);
-    if (ipfsHash) {
-      console.log(`   ${ipfsHash}`);
-      console.log(`   🔗 https://ipfs.io/ipfs/${ipfsHash}`);
-    } else {
-      console.log(`   ⚠️  Access denied or not available`);
-    }
-    
-    // 8. Final summary
-    console.log(`\n📊 SUMMARY:`);
-    console.log(`   Exists: ✅ Yes`);
-    console.log(`   Valid: ${isValid ? '✅ Yes' : '❌ No'}`);
-    if (isRevoked !== null) {
-      console.log(`   Revoked: ${isRevoked ? '❌ Yes' : '✅ No'}`);
-    }
-    
-  } catch (error) {
-    console.error(`\n❌ Error verifying ${credentialId}:`, error.message);
-  }
-}
-
-/**
- * Call a contract method using Odra's entry points
- */
-async function callContractMethod(methodName, args) {
-  try {
-    const result = await contract.queryContractData([
-      methodName,
-      ...args
-    ]);
-    
-    return parseResult(result);
-  } catch (error) {
-    console.error(`⚠️  Error calling ${methodName}:`, error.message);
-    return null;
-  }
-}
-
-/**
- * Parse the result from contract query
- */
-function parseResult(result) {
-  if (!result) return null;
-  
-  // Handle different return types
-  if (typeof result === 'string') return result;
-  if (typeof result === 'number') return result;
-  if (typeof result === 'boolean') return result;
-  
-  // Handle CLValue types
-  if (result.CLValue) {
-    const clValue = result.CLValue;
-    
-    // Parse based on cl_type
-    if (clValue.cl_type === 'Bool') {
-      return clValue.parsed;
-    } else if (clValue.cl_type === 'U8' || clValue.cl_type === 'U64') {
-      return parseInt(clValue.parsed);
-    } else if (clValue.cl_type === 'String') {
-      return clValue.parsed;
-    } else if (clValue.cl_type && clValue.cl_type.ByteArray) {
-      // Address type
-      return `account-hash-${Buffer.from(clValue.bytes, 'hex').toString('hex')}`;
-    }
+  function readU32() {
+    const val = Buffer.from(data.slice(idx, idx + 4)).readUInt32LE();
+    idx += 4;
+    return val;
   }
   
-  return result;
-}
-
-/**
- * Alternative: Batch verification for multiple credentials
- */
-async function batchVerify(credentialIds) {
-  console.log(`\n📦 Batch Verifying ${credentialIds.length} credentials...\n`);
-  
-  const results = [];
-  
-  for (const credId of credentialIds) {
-    const isValid = await callContractMethod('verify_credential', [credId]);
-    const holder = await callContractMethod('get_holder', [credId]);
-    
-    results.push({
-      credentialId: credId,
-      exists: holder !== null,
-      valid: isValid,
-      holder: holder
-    });
+  function readU64() {
+    const val = Buffer.from(data.slice(idx, idx + 8)).readBigUInt64LE();
+    idx += 8;
+    return Number(val);
   }
   
-  // Display summary table
-  console.log('┌─────────────────────┬────────┬────────┬──────────────────────────────────┐');
-  console.log('│ Credential ID       │ Exists │ Valid  │ Holder                           │');
-  console.log('├─────────────────────┼────────┼────────┼──────────────────────────────────┤');
+  function readString() {
+    const len = readU32();
+    const str = String.fromCharCode(...data.slice(idx, idx + len));
+    idx += len;
+    return str;
+  }
   
-  results.forEach(r => {
-    const existsIcon = r.exists ? '✅' : '❌';
-    const validIcon = r.valid ? '✅' : '❌';
-    const holderShort = r.holder ? r.holder.substring(0, 30) + '...' : 'N/A';
-    
-    console.log(`│ ${r.credentialId.padEnd(19)} │ ${existsIcon}    │ ${validIcon}    │ ${holderShort.padEnd(32)} │`);
-  });
+  function readAddress() {
+    idx += 1; // Skip tag
+    const addr = Buffer.from(data.slice(idx, idx + 32)).toString('hex');
+    idx += 32;
+    return `account-hash-${addr}`;
+  }
   
-  console.log('└─────────────────────┴────────┴────────┴──────────────────────────────────┘');
+  // Parse fields
+  const issuerDid = readString();
+  const issuerAddress = readAddress();
+  const holderDid = readString();
+  const holderAddress = readAddress();
+  const credentialHash = readString();
+  const issuerSignature = readString();
+  const issuedAt = readU64();
+  const expiresAt = readU64();
+  const aiConfidence = data[idx++];
+  const ipfsHash = readString();
+  const revoked = data[idx++] !== 0;
   
-  return results;
+  console.log('Issuer DID:', issuerDid);
+  console.log('Issuer Address:', issuerAddress);
+  console.log('Holder DID:', holderDid);
+  console.log('Holder Address:', holderAddress);
+  console.log('Credential Hash:', credentialHash);
+  console.log('Signature:', issuerSignature.substring(0, 32) + '...');
+  console.log('Issued At:', new Date(issuedAt).toLocaleString());
+  console.log('Expires At:', new Date(expiresAt).toLocaleString());
+  console.log('AI Confidence:', aiConfidence + '%');
+  console.log('IPFS Hash:', ipfsHash);
+  console.log('Revoked:', revoked ? 'Yes' : 'No');
+  console.log('='.repeat(60));
+  
+  const now = Date.now();
+  if (revoked) {
+    console.log('❌ STATUS: REVOKED');
+  } else if (now >= expiresAt) {
+    console.log('⏰ STATUS: EXPIRED');
+  } else {
+    console.log('✅ STATUS: VALID');
+  }
+  console.log('='.repeat(60));
 }
-
-// Run main function
-if (require.main === module) {
-  main().catch(console.error);
-}
-
-// Export for use as module
-module.exports = {
-  verifyCredential,
-  batchVerify,
-  callContractMethod
-};

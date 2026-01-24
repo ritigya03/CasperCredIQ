@@ -1,592 +1,536 @@
 "use client";
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { AlertCircle, CheckCircle, XCircle, Search, Clock, Shield, FileText, ArrowLeft } from 'lucide-react';
 
-import React, { useState } from 'react';
-import { Search, CheckCircle, XCircle, Clock, User, Shield, FileText, ExternalLink, AlertCircle, Loader2, Database, Globe } from 'lucide-react';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
-function CredentialVerification() {
-  const [credentialId, setCredentialId] = useState('');
+const CredentialVerification = () => {
+  const [deployHash, setDeployHash] = useState('');
   const [ipfsHash, setIpfsHash] = useState('');
-  const [mode, setMode] = useState('blockchain'); // 'blockchain' or 'ipfs'
+  const [verificationMode, setVerificationMode] = useState('deployHash'); // 'deployHash' or 'ipfsHash'
   const [loading, setLoading] = useState(false);
+  const [credential, setCredential] = useState(null);
   const [error, setError] = useState('');
-  const [result, setResult] = useState(null);
-  const [ipfsData, setIpfsData] = useState(null);
-  const [revocationStatus, setRevocationStatus] = useState(null);
-  const [checkingRevocation, setCheckingRevocation] = useState(false);
 
-  const handleCheckRevocation = async () => {
-    if (!credentialId.trim()) {
-      setError('Please enter a credential ID');
-      return;
-    }
+  // Use your backend API instead of direct RPC calls
+  const API_URL = 'http://localhost:3001';
+  const [autoVerify, setAutoVerify] = useState(false);
 
-    setCheckingRevocation(true);
-    setError('');
-    setRevocationStatus(null);
-
-    try {
-      console.log(`Checking revocation status for: ${credentialId}`);
-      
-      // Call the dictionary endpoint to get cred_revoked mapping
-      const response = await fetch(`${API_URL}/api/debug/dictionary/cred_revoked/${encodeURIComponent(credentialId.trim())}`);
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to check revocation status');
+  // Check URL parameters on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hashFromUrl = params.get('hash');
+    const modeFromUrl = params.get('mode');
+    
+    if (hashFromUrl) {
+      if (modeFromUrl === 'deploy') {
+        setDeployHash(hashFromUrl);
+        setVerificationMode('deployHash');
+        setAutoVerify(true);
+      } else if (modeFromUrl === 'ipfs') {
+        setIpfsHash(hashFromUrl);
+        setVerificationMode('ipfsHash');
+        setAutoVerify(true);
       }
-      
-      if (data.success) {
-        if (data.exists) {
-          // Parse the boolean value
-          const isRevoked = data.value === true || data.value === 'true';
-          setRevocationStatus({
-            isRevoked,
-            message: isRevoked ? 'YES - Credential is REVOKED' : 'NO - Credential is ACTIVE',
-            verified: true,
-            timestamp: new Date().toISOString()
-          });
-        } else {
-          setRevocationStatus({
-            isRevoked: null,
-            message: 'Credential not found on blockchain',
-            verified: false,
-            timestamp: new Date().toISOString()
-          });
-        }
-      } else {
-        throw new Error('Failed to query blockchain');
-      }
-      
-    } catch (err) {
-      console.error('Revocation check error:', err);
-      setError(`Revocation check failed: ${err.message}`);
-      setRevocationStatus(null);
-    } finally {
-      setCheckingRevocation(false);
     }
-  };
+  }, []);
 
-  const handleVerifyBlockchain = async () => {
-    if (!credentialId.trim()) {
-      setError('Please enter a credential ID');
+  // Auto-verify when autoVerify is set
+  useEffect(() => {
+    if (autoVerify) {
+      setAutoVerify(false);
+      setTimeout(() => {
+        queryCredential();
+      }, 500);
+    }
+  }, [autoVerify, deployHash, ipfsHash, verificationMode]);
+
+  const queryCredential = async () => {
+    const inputValue = verificationMode === 'ipfsHash' ? ipfsHash : deployHash;
+    
+    if (!inputValue.trim()) {
+      const modeLabel = verificationMode === 'ipfsHash' ? 'IPFS hash' : 'deploy hash';
+      setError(`Please enter a ${modeLabel}`);
       return;
     }
 
     setLoading(true);
     setError('');
-    setResult(null);
-    setIpfsData(null);
+    setCredential(null);
 
     try {
-      console.log(`Verifying credential on blockchain: ${credentialId}`);
+      let data;
       
-      const response = await fetch(`${API_URL}/api/blockchain/credential/${encodeURIComponent(credentialId.trim())}`);
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Blockchain verification failed');
-      }
-      
-      if (data.success) {
-        setResult(data.credential);
+      if (verificationMode === 'ipfsHash') {
+        // Fetch credential data from IPFS
+        const response = await fetch(`${API_URL}/api/ipfs/${inputValue.trim()}`);
+        data = await response.json();
         
-        // If IPFS hash is available, fetch the data
-        if (data.credential.ipfsHash) {
-          try {
-            const ipfsResponse = await fetch(`${API_URL}/api/ipfs/${data.credential.ipfsHash}`);
-            if (ipfsResponse.ok) {
-              const ipfsResult = await ipfsResponse.json();
-              setIpfsData(ipfsResult.data);
-            }
-          } catch (ipfsError) {
-            console.log('IPFS data fetch failed:', ipfsError.message);
-          }
+        if (!data.success) {
+          setError(data.error || 'Failed to fetch from IPFS. Please check the hash and try again.');
+          return;
         }
-      } else {
-        setError(data.message || 'Credential not found');
-      }
-      
-    } catch (err) {
-      console.error('Verification error:', err);
-      setError(`Error: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyIPFS = async () => {
-    if (!ipfsHash.trim()) {
-      setError('Please enter an IPFS hash');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    setResult(null);
-    setIpfsData(null);
-
-    try {
-      console.log(`Fetching IPFS data: ${ipfsHash}`);
-      
-      const response = await fetch(`${API_URL}/api/ipfs/${ipfsHash.trim()}`);
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'IPFS fetch failed');
-      }
-      
-      if (data.success) {
-        setIpfsData(data.data);
         
-        // Create a result object from IPFS data
-        setResult({
-          credentialId: data.data.credentialId || 'From IPFS',
-          holder: data.data.holder || data.data.recipientName || data.data.recipientAddress || 'N/A',
-          issuer: data.data.issuer || data.data.issuerName || data.data.issuerAddress || 'N/A',
-          ipfsHash: ipfsHash.trim(),
-          valid: true, // Assume valid for IPFS view
-          verifiedOnChain: false,
-          timestamp: new Date().toISOString(),
-          note: 'Data from IPFS only (no blockchain verification)'
+        // Transform IPFS response to UI format
+        const ipfsData = data.data;
+        const uiData = {
+          credential: {
+            credentialId: ipfsData.credentialId || 'From IPFS',
+            issuerDid: `did:casper:${ipfsData.issuerPublicKey?.slice(0, 20) || 'unknown'}`,
+            issuerAddress: ipfsData.issuerPublicKey || 'Unknown',
+            holderDid: `did:casper:${ipfsData.recipientPublicKey?.slice(0, 20) || 'unknown'}`,
+            holderAddress: ipfsData.recipientPublicKey || 'Unknown',
+            credentialHash: 'Stored off-chain',
+            ipfsHash: inputValue.trim(),
+            aiConfidence: ipfsData.aiConfidence || 0,
+            expiresAt: ipfsData.issuedAt ? 
+              new Date(new Date(ipfsData.issuedAt).getTime() + (parseInt(ipfsData.validityDays || '30') * 24 * 60 * 60 * 1000)).toISOString() : 
+              'Unknown',
+            issuedAt: ipfsData.issuedAt || 'Unknown'
+          },
+          isRevoked: false, // IPFS data doesn't track revocation
+          isExpired: false, // Would need to calculate based on validity
+          isValid: true, // IPFS data exists
+          message: "Credential data retrieved from IPFS",
+          ipfsData: ipfsData
+        };
+        
+        setCredential(uiData);
+      } else if (verificationMode === 'deployHash') {
+        // Use the new deploy hash verification endpoint
+        const response = await fetch(`${API_URL}/api/verify/deploy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ deployHash: inputValue.trim() })
         });
-      } else {
-        setError(data.message || 'Could not fetch IPFS data');
+        data = await response.json();
+        
+        if (!data.success) {
+          setError(data.error || 'Failed to verify deploy. Please check the hash and try again.');
+          return;
+        }
+        
+        // Transform deploy response to UI format
+        const uiData = {
+          credential: {
+            ...data.credential,
+            credentialId: 'From Deploy',
+            hash: data.credential.credentialHash,
+            expiresAt: new Date(data.credential.expiresAt).toISOString()
+          },
+          isRevoked: data.status.isRevoked,
+          isExpired: data.status.isExpired,
+          isValid: data.status.isValid,
+          message: data.verified ? "Credential is valid" : "Credential is invalid",
+          deployHash: data.deployHash,
+          dictionaryKey: data.dictionaryKey
+        };
+        
+        setCredential(uiData);
       }
-      
     } catch (err) {
-      console.error('IPFS fetch error:', err);
-      setError(`Error: ${err.message}`);
+      console.error('Error querying credential:', err);
+      setError('Failed to fetch credential. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerify = () => {
-    if (mode === 'blockchain') {
-      handleVerifyBlockchain();
-    } else {
-      handleVerifyIPFS();
+  const formatDate = (timestamp) => {
+    if (!timestamp || timestamp === 'Unknown') return 'Unknown';
+    return new Date(timestamp).toLocaleString();
+  };
+
+  const getStatus = () => {
+    if (!credential) return null;
+    
+    if (credential.isRevoked) {
+      return { 
+        type: 'revoked', 
+        text: 'REVOKED', 
+        color: 'bg-red-100 text-red-800 border-red-300', 
+        icon: XCircle 
+      };
     }
-  };
-
-  const formatAddress = (address) => {
-    if (!address) return 'N/A';
-    if (typeof address !== 'string') return String(address);
-    if (address.length <= 16) return address;
-    return `${address.slice(0, 10)}...${address.slice(-8)}`;
-  };
-
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'N/A';
-    try {
-      if (typeof timestamp === 'string') {
-        return new Date(timestamp).toLocaleDateString('en-US', { 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-      } else if (typeof timestamp === 'number') {
-        return new Date(timestamp).toLocaleDateString('en-US', { 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-      }
-      return 'Invalid date';
-    } catch {
-      return 'Invalid timestamp';
+    
+    if (credential.isExpired) {
+      return { 
+        type: 'expired', 
+        text: 'EXPIRED', 
+        color: 'bg-orange-100 text-orange-800 border-orange-300', 
+        icon: Clock 
+      };
     }
+    
+    return { 
+      type: 'valid', 
+      text: 'VALID', 
+      color: 'bg-green-100 text-green-800 border-green-300', 
+      icon: CheckCircle 
+    };
   };
 
-  const getStatusColor = () => {
-    if (!result) return 'gray';
-    if (result.valid === false) return 'red';
-    if (result.verifiedOnChain === false && mode === 'ipfs') return 'blue';
-    return 'green';
-  };
-
-  const getStatusText = () => {
-    if (!result) return 'Unknown';
-    if (result.valid === false) return 'INVALID';
-    if (result.verifiedOnChain === false && mode === 'ipfs') return 'IPFS ONLY';
-    if (result.verifiedOnChain === true && result.valid === true) return 'VALID';
-    return 'UNKNOWN';
-  };
-
-  const getStatusIcon = () => {
-    if (!result) return null;
-    if (result.valid === false) return <XCircle className="w-6 h-6 text-red-500" />;
-    if (result.verifiedOnChain === false && mode === 'ipfs') return <FileText className="w-6 h-6 text-blue-500" />;
-    return <CheckCircle className="w-6 h-6 text-green-500" />;
-  };
+  const status = getStatus();
+  const cred = credential?.credential;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="h-screen flex flex-col">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Shield className="w-10 h-10 text-indigo-600" />
-            <Globe className="w-10 h-10 text-indigo-600" />
-            <Database className="w-10 h-10 text-indigo-600" />
-          </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Credential Verification
-          </h1>
-          <p className="text-gray-600">
-            Verify credentials on Casper blockchain or view IPFS data
-          </p>
-        </div>
-
-        {/* Mode Selection */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-6">
-          <div className="grid grid-cols-2 gap-2 mb-6 p-1 bg-gray-100 rounded-lg">
-            <button
-              onClick={() => {
-                setMode('blockchain');
-                setError('');
-                setResult(null);
-                setIpfsData(null);
-                setRevocationStatus(null);
-              }}
-              className={`py-3 px-4 rounded-lg font-semibold transition-all ${
-                mode === 'blockchain'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-transparent text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <Database className="w-5 h-5" />
-                <span>Blockchain</span>
-              </div>
-            </button>
-            <button
-              onClick={() => {
-                setMode('ipfs');
-                setError('');
-                setResult(null);
-                setIpfsData(null);
-                setRevocationStatus(null);
-              }}
-              className={`py-3 px-4 rounded-lg font-semibold transition-all ${
-                mode === 'ipfs'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-transparent text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <FileText className="w-5 h-5" />
-                <span>IPFS</span>
-              </div>
-            </button>
-          </div>
-
-          {/* Search Input */}
-          <div className="flex gap-3 mb-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              {mode === 'blockchain' ? (
-                <input
-                  type="text"
-                  placeholder="Enter Credential ID (e.g., CRED_123456)"
-                  value={credentialId}
-                  onChange={(e) => setCredentialId(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleVerify()}
-                  className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none text-lg"
-                />
-              ) : (
-                <input
-                  type="text"
-                  placeholder="Enter IPFS Hash (e.g., QmXxx...)"
-                  value={ipfsHash}
-                  onChange={(e) => setIpfsHash(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleVerify()}
-                  className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none text-lg"
-                />
-              )}
-            </div>
-            <button
-              onClick={handleVerify}
-              disabled={loading}
-              className="px-8 py-4 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold transition-all flex items-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Verifying...
-                </>
-              ) : (
-                <>
-                  <Search className="w-5 h-5" />
-                  Verify
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Revocation Check Button - Only in blockchain mode */}
-          {mode === 'blockchain' && (
-            <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Shield className="w-5 h-5 text-purple-600" />
-                    <h4 className="font-semibold text-gray-900">Quick Revocation Check</h4>
-                  </div>
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-100 shadow-sm border-b">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="flex items-center gap-4">
+              <Link
+                href="/dashboard"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600 hover:text-gray-900"
+                title="Back to Dashboard"
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </Link>
+              <div className="flex items-center gap-3">
+                <Shield className="w-8 h-8 text-indigo-600" />
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-800">
+                    Credential Verification
+                  </h1>
                   <p className="text-sm text-gray-600">
-                    Check if this credential has been revoked on the blockchain
+                    Verify credentials on Casper blockchain or IPFS
                   </p>
                 </div>
-                <button
-                  onClick={handleCheckRevocation}
-                  disabled={checkingRevocation || !credentialId.trim()}
-                  className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold transition-all flex items-center gap-2 ml-4"
-                >
-                  {checkingRevocation ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Checking...
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="w-4 h-4" />
-                      Check Revoked
-                    </>
-                  )}
-                </button>
               </div>
             </div>
-          )}
+          </div>
+        </div>
 
-          {/* Revocation Status Result */}
-          {revocationStatus && (
-            <div className={`mb-4 p-6 rounded-xl border-2 ${
-              revocationStatus.verified 
-                ? (revocationStatus.isRevoked 
-                    ? 'bg-red-50 border-red-300' 
-                    : 'bg-green-50 border-green-300')
-                : 'bg-gray-50 border-gray-300'
-            }`}>
-              <div className="flex items-center gap-3">
-                {revocationStatus.verified ? (
-                  revocationStatus.isRevoked ? (
-                    <XCircle className="w-8 h-8 text-red-600 flex-shrink-0" />
-                  ) : (
-                    <CheckCircle className="w-8 h-8 text-green-600 flex-shrink-0" />
-                  )
-                ) : (
-                  <AlertCircle className="w-8 h-8 text-gray-600 flex-shrink-0" />
+        {/* Main Content - Two Column Layout */}
+        <div className="flex-1 overflow-hidden">
+          <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0">
+            {/* Left Column - Search/Input */}
+            <div className="bg-white border-r overflow-y-auto p-6 lg:p-8">
+              <div className="max-w-xl mx-auto">
+                <h2 className="text-xl font-bold text-gray-800 mb-6">Verify Credential</h2>
+                
+                {/* Mode Toggle */}
+                <div className="flex gap-2 mb-6">
+                  <button
+                    onClick={() => setVerificationMode('deployHash')}
+                    className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
+                      verificationMode === 'deployHash'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center gap-1">
+         
+                      <span className="text-sm">Deploy Hash</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setVerificationMode('ipfsHash')}
+                    className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
+                      verificationMode === 'ipfsHash'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center gap-1">
+                     
+                      <span className="text-sm">IPFS Hash</span>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Input Field */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {verificationMode === 'ipfsHash' ? 'IPFS Hash' : 'Deploy Hash'}
+                  </label>
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={verificationMode === 'ipfsHash' ? ipfsHash : deployHash}
+                      onChange={(e) => verificationMode === 'ipfsHash' ? setIpfsHash(e.target.value) : setDeployHash(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && queryCredential()}
+                      placeholder={verificationMode === 'ipfsHash' ? 'e.g., QmXgqL8j5qN6U5K4z8XvY8T7S6D5F4G3H2J1K9L8M7N6B5V4C3' : 'e.g., fe3ce95f95a717528a3e674063f2e9e13049bdde3a7a75578c285273bdb41ba1'}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                    />
+                    <button
+                      onClick={queryCredential}
+                      disabled={loading}
+                      className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all font-medium shadow-md"
+                    >
+                      {loading ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Verifying...
+                        </>
+                      ) : (
+                        <>
+                          <Search className="w-5 h-5" />
+                          Verify Credential
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Error Message */}
+                {error && (
+                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 flex items-start gap-3 animate-fadeIn">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                    <div className="text-red-800 text-sm">{error}</div>
+                  </div>
                 )}
-                <div className="flex-1">
-                  <div className="font-bold text-lg mb-1">
-                    {revocationStatus.verified ? (
-                      <span className={revocationStatus.isRevoked ? 'text-red-700' : 'text-green-700'}>
-                        Revocation Status: {revocationStatus.isRevoked ? 'YES' : 'NO'}
+
+                {/* Help Text */}
+                {!credential && !error && !loading && (
+                  <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-6 mt-6">
+                    <AlertCircle className="w-6 h-6 text-blue-600 mb-3" />
+                    <p className="text-gray-700 font-medium mb-3">
+                      Choose a verification method
+                    </p>
+                    <div className="space-y-2 text-sm text-gray-600">
+                      <div>
+                        <strong className="text-gray-800">Deploy Hash:</strong> Verifies credential on-chain with current revocation status
+                      </div>
+                      <div>
+                        <strong className="text-gray-800">IPFS Hash:</strong> Retrieves the raw credential data stored on IPFS
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Quick Stats / Info Section */}
+                <div className="mt-auto pt-6 border-t">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Verification Methods</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2 text-xs text-gray-600">
+                      <Shield className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-medium text-gray-700">Deploy Hash</div>
+                        <div>On-chain verification with real-time revocation status</div>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 text-xs text-gray-600">
+                      <FileText className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-medium text-gray-700">IPFS Hash</div>
+                        <div>Off-chain data retrieval from decentralized storage</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <div className="flex items-center gap-2 text-xs text-indigo-700">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <div>
+                        <strong>Network:</strong> Casper Testnet
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Results */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-100 overflow-y-auto p-6 lg:p-8">
+              <div className="max-w-3xl mx-auto">
+        {credential && status && cred && (
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-lg shadow-lg overflow-hidden animate-fadeIn">
+            {/* Status Badge */}
+            <div className={`${status.color} border-b-2 p-6 flex items-center justify-center gap-3`}>
+              <status.icon className="w-8 h-8" />
+              <span className="text-2xl font-bold">{status.text}</span>
+            </div>
+
+            {/* Status Summary */}
+            <div className="bg-gray-50 p-4 border-b">
+              <p className="text-center text-gray-700 font-medium">{credential.message}</p>
+              {verificationMode === 'deployHash' && (
+                <div className="mt-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                  ⚠️ <strong>Note:</strong> Deploy hash verification shows the credential state at the time of that specific transaction. 
+                  If the credential was revoked later, use the revoke transaction's deploy hash to see the current status.
+                </div>
+              )}
+            </div>
+
+            {/* Details */}
+            <div className="p-4 bg-white space-y-2">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-3">
+                <FileText className="w-5 h-5" />
+                Credential Details
+              </h3>
+
+              <DetailRow label="Credential ID" value={verificationMode === 'deployHash' ? 'From Deploy' : cred.credentialId || 'From IPFS'} />
+              
+              {/* Show deploy hash and dictionary key if verified via deploy */}
+              {credential.deployHash && (
+                <>
+                  <DetailRow label="Deploy Hash" value={credential.deployHash} mono />
+                  <DetailRow label="Dictionary Key" value={credential.dictionaryKey} mono />
+                </>
+              )}
+              
+              <div className="border-t pt-3 mt-3">
+                <h4 className="font-semibold text-gray-700 mb-2 text-sm">Issuer Information</h4>
+                <DetailRow label="Issuer DID" value={cred.issuerDid} mono />
+                <DetailRow label="Issuer Address" value={cred.issuerAddress} mono />
+              </div>
+
+              <div className="border-t pt-3">
+                <h4 className="font-semibold text-gray-700 mb-2 text-sm">Holder Information</h4>
+                <DetailRow label="Holder DID" value={cred.holderDid} mono />
+                <DetailRow label="Holder Address" value={cred.holderAddress} mono />
+              </div>
+
+              <div className="border-t pt-3">
+                <h4 className="font-semibold text-gray-700 mb-2 text-sm">Validity Period</h4>
+                <DetailRow 
+                  label="Issued At" 
+                  value={formatDate(cred.issuedAt)} 
+                />
+                <DetailRow 
+                  label="Expires At" 
+                  value={formatDate(cred.expiresAt)} 
+                />
+              </div>
+
+              <div className="border-t pt-3">
+                <h4 className="font-semibold text-gray-700 mb-2 text-sm">Additional Information</h4>
+                <DetailRow 
+                  label="AI Confidence" 
+                  value={`${cred.aiConfidence}%`} 
+                />
+                <DetailRow 
+                  label="Credential Hash" 
+                  value={cred.credentialHash} 
+                  mono 
+                />
+                <DetailRow 
+                  label="IPFS Hash" 
+                  value={cred.ipfsHash} 
+                  mono 
+                />
+              </div>
+              
+              {/* Status Indicators */}
+              <div className="pt-3 border-t space-y-2">
+                <div className="flex items-center gap-2">
+                  {credential.isRevoked ? (
+                    <>
+                      <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                      <span className="font-medium text-red-600 text-sm">
+                        This credential has been revoked
                       </span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                      <span className="font-medium text-green-600 text-sm">
+                        This credential has not been revoked
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {!credential.isRevoked && (
+                  <div className="flex items-center gap-2">
+                    {credential.isExpired ? (
+                      <>
+                        <Clock className="w-5 h-5 text-orange-600 flex-shrink-0" />
+                        <span className="font-medium text-orange-600 text-sm">
+                          This credential has expired
+                        </span>
+                      </>
                     ) : (
-                      <span className="text-gray-700">Not Found</span>
+                      <>
+                        <Clock className="w-5 h-5 text-green-600 flex-shrink-0" />
+                        <span className="font-medium text-green-600 text-sm">
+                          This credential is still valid
+                        </span>
+                      </>
                     )}
                   </div>
-                  <div className={`text-sm ${
-                    revocationStatus.verified 
-                      ? (revocationStatus.isRevoked ? 'text-red-600' : 'text-green-600')
-                      : 'text-gray-600'
-                  }`}>
-                    {revocationStatus.message}
+                )}
+
+                {credential.isValid && (
+                  <div className="mt-3 p-3 bg-green-50 border-2 border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-6 h-6 text-green-600 flex-shrink-0" />
+                      <span className="font-bold text-green-700 text-lg">
+                        ✓ This credential is VALID and can be trusted
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500 mt-2">
-                    Verified on blockchain at {new Date(revocationStatus.timestamp).toLocaleString()}
+                )}
+              </div>
+              
+              {/* Raw IPFS Data Section - Only show for IPFS mode */}
+              {verificationMode === 'ipfsHash' && credential.ipfsData && (
+                <div className="border-t pt-4 mt-4">
+                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Raw IPFS Data
+                  </h4>
+                  <div className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto">
+                    <pre className="text-xs font-mono whitespace-pre-wrap">
+                      {JSON.stringify(credential.ipfsData, null, 2)}
+                    </pre>
                   </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Info text */}
-          <div className="text-sm text-gray-600">
-            {mode === 'blockchain' ? (
-              <div>
-                <p><strong>Blockchain Verification:</strong> Query the smart contract directly to verify credential validity.</p>
-                <p className="text-xs mt-1 text-indigo-600">Checks: Existence, Validity, Revocation, Expiry, Holder, Issuer, IPFS Hash</p>
-              </div>
-            ) : (
-              <div>
-                <p><strong>IPFS View:</strong> Directly view credential data stored on IPFS.</p>
-                <p className="text-xs mt-1 text-blue-600">Note: This does not verify blockchain status. For complete verification, use Blockchain mode.</p>
-              </div>
-            )}
-          </div>
-
-          {error && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-red-700">
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Results */}
-        {result && (
-          <div className={`bg-white rounded-2xl shadow-xl p-8 mb-6 border-l-8 border-${getStatusColor()}-500`}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                {getStatusIcon()}
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">
-                    {getStatusText()}
-                  </h2>
-                  <p className="text-gray-600">
-                    {mode === 'blockchain' 
-                      ? (result.verifiedOnChain ? 'Verified on Blockchain' : 'Blockchain verification failed')
-                      : 'Data from IPFS'}
+                  <p className="text-xs text-gray-500 mt-2">
+                    💡 This is the raw credential data as stored on IPFS
                   </p>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-gray-500">Mode</div>
-                <div className="font-semibold text-indigo-600">{mode.toUpperCase()}</div>
-              </div>
-            </div>
-
-            {/* Credential Details */}
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              <div className="space-y-4">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  {mode === 'blockchain' ? <Database className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                  {mode === 'blockchain' ? 'Blockchain Data' : 'Credential Data'}
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-sm text-gray-600">Credential ID</div>
-                    <div className="font-mono font-semibold text-gray-900 truncate">
-                      {result.credentialId}
-                    </div>
-                  </div>
-                  {result.holder && (
-                    <div>
-                      <div className="text-sm text-gray-600">Holder</div>
-                      <div className="font-mono text-sm text-gray-900 truncate">
-                        {formatAddress(result.holder)}
-                      </div>
-                    </div>
-                  )}
-                  {result.issuer && (
-                    <div>
-                      <div className="text-sm text-gray-600">Issuer</div>
-                      <div className="font-mono text-sm text-gray-900 truncate">
-                        {formatAddress(result.issuer)}
-                      </div>
-                    </div>
-                  )}
-                  {result.valid !== undefined && mode === 'blockchain' && (
-                    <div>
-                      <div className="text-sm text-gray-600">Valid</div>
-                      <div className={`font-semibold ${result.valid ? 'text-green-600' : 'text-red-600'}`}>
-                        {result.valid ? 'YES' : 'NO'}
-                      </div>
-                    </div>
-                  )}
-                  {result.verifiedOnChain !== undefined && (
-                    <div>
-                      <div className="text-sm text-gray-600">Blockchain Verified</div>
-                      <div className={`font-semibold ${result.verifiedOnChain ? 'text-green-600' : 'text-blue-600'}`}>
-                        {result.verifiedOnChain ? 'YES' : 'NO'}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Additional Info */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Additional Information
-                </h3>
-                <div className="space-y-3">
-                  {result.timestamp && (
-                    <div>
-                      <div className="text-sm text-gray-600">Verified At</div>
-                      <div className="font-semibold text-gray-900">
-                        {formatTimestamp(result.timestamp)}
-                      </div>
-                    </div>
-                  )}
-                  {result.ipfsHash && (
-                    <div>
-                      <div className="text-sm text-gray-600">IPFS Hash</div>
-                      <a
-                        href={`https://white-real-badger-280.mypinata.cloud/ipfs/${result.ipfsHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-mono text-sm text-indigo-600 hover:underline truncate block"
-                      >
-                        {result.ipfsHash}
-                      </a>
-                    </div>
-                  )}
-                  {result.note && (
-                    <div>
-                      <div className="text-sm text-gray-600">Note</div>
-                      <div className="text-sm text-gray-700">{result.note}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* IPFS Data Button */}
-            {ipfsData && (
-              <div className="mt-6 pt-6 border-t">
-                <button
-                  onClick={() => {
-                    const dataStr = JSON.stringify(ipfsData, null, 2);
-                    const blob = new Blob([dataStr], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `credential-${result.credentialId || 'ipfs'}.json`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                  }}
-                  className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-2"
-                >
-                  <FileText className="w-4 h-4" />
-                  Download IPFS Data
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Raw IPFS Data Display */}
-        {ipfsData && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 mb-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <FileText className="w-6 h-6 text-indigo-600" />
-              IPFS Data Content
-            </h3>
-            <div className="bg-gray-50 rounded-lg p-6 overflow-auto max-h-96">
-              <pre className="text-sm text-gray-800 whitespace-pre-wrap">
-                {JSON.stringify(ipfsData, null, 2)}
-              </pre>
+              )}
             </div>
           </div>
         )}
+
+        {/* Help Text */}
+       
+        
+        {/* Placeholder when no results */}
+        {!credential && !loading && !error && (
+          <div className="flex items-center top-50 justify-center h-full">
+            <div className="text-center text-gray-400">    
+              <p className="text-lg font-medium">No results yet</p>
+              <p className="text-sm">Enter a hash and click verify to see results here</p>
+            </div>
+          </div>
+        )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
-}
+};
+
+const DetailRow = ({ label, value, mono = false }) => (
+  <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 py-2">
+    <span className="font-medium text-gray-600 sm:w-40 flex-shrink-0">{label}:</span>
+    <span className={`${mono ? 'font-mono text-sm bg-gray-100 px-2 py-1 rounded' : ''} text-gray-900 break-all`}>
+      {value}
+    </span>
+  </div>
+);
 
 export default CredentialVerification;

@@ -1,39 +1,128 @@
 #!/bin/bash
 
-# Script to find the contract hash that contains your credentials
-# The credentials are in dictionaries like dictionary-19ee565d2d48154a9241db492d694434b6fad89869b04b60ab518c01c1ed3915
+# Simple script to query any credential by ID
+# Usage: ./query_credential.sh CRED-001
 
-NODE_URL="http://65.109.83.79:7777/rpc"
+NODE_URL="http://65.109.83.79:7777"
 
-# Known dictionary from your earlier output where TEST_VERIFY_01 data exists
-KNOWN_DICT="dictionary-19ee565d2d48154a9241db492d694434b6fad89869b04b60ab518c01c1ed3915"
+if [ -z "$1" ]; then
+  echo "Usage: $0 <CREDENTIAL_ID>"
+  echo "Example: $0 CRED-001"
+  exit 1
+fi
 
-echo "🔍 Finding Contract Hash for Your Credentials"
-echo "=============================================="
+CREDENTIAL_ID="$1"
+
+# This is the dictionary key we found for CRED-001
+# For other credentials, you'd need to calculate the key using the formula
+DICT_KEY="dictionary-52858f490b5f964e7f3fae9ac2181abf5874b9ec8fb8d3f5380b5618254dbfeb"
+
+echo "🔍 Querying credential: $CREDENTIAL_ID"
 echo ""
 
-# Get current state root
 STATE_ROOT=$(casper-client get-state-root-hash --node-address $NODE_URL | jq -r '.result.state_root_hash')
-echo "📡 State Root: $STATE_ROOT"
-echo ""
-
-# Query the known dictionary to find what contract it belongs to
-echo "🔎 Querying dictionary: $KNOWN_DICT"
-echo ""
 
 casper-client query-global-state \
   --node-address $NODE_URL \
   --state-root-hash $STATE_ROOT \
-  --key $KNOWN_DICT
+  --key $DICT_KEY \
+  | jq -r '.result.stored_value.CLValue.parsed' | python3 -c '
+import sys
+import json
 
-echo ""
-echo "💡 INSTRUCTIONS:"
-echo "================"
-echo "Look for the contract hash in the output above."
-echo "The dictionary should reference a contract-hash or contract-package-hash."
-echo ""
-echo "If you see the contract hash, update your verify_credentials.js:"
-echo "const CONTRACT_HASH = 'hash-XXXXX';"
-echo ""
-echo "Alternatively, check your deployment transaction to find the contract hash:"
-echo "Look for the deploy hash when you first deployed the contract."
+data = json.load(sys.stdin)
+
+# Parse the credential structure
+print("=" * 60)
+print("CREDENTIAL DETAILS")
+print("=" * 60)
+
+# Helper to decode bytes to string
+def decode_string(bytes_list):
+    return "".join(chr(b) for b in bytes_list)
+
+# Parse based on the structure we saw
+idx = 0
+
+# Field 1: issuer_did (length prefix + string)
+issuer_did_len = int.from_bytes(bytes(data[idx:idx+4]), "little")
+idx += 4
+issuer_did = decode_string(data[idx:idx+issuer_did_len])
+idx += issuer_did_len
+print(f"Issuer DID: {issuer_did}")
+
+# Field 2: issuer_address (33 bytes - 1 byte tag + 32 bytes hash)
+idx += 1  # Skip tag
+issuer_addr = bytes(data[idx:idx+32]).hex()
+idx += 32
+print(f"Issuer Address: account-hash-{issuer_addr}")
+
+# Field 3: holder_did
+holder_did_len = int.from_bytes(bytes(data[idx:idx+4]), "little")
+idx += 4
+holder_did = decode_string(data[idx:idx+holder_did_len])
+idx += holder_did_len
+print(f"Holder DID: {holder_did}")
+
+# Field 4: holder_address (33 bytes)
+idx += 1  # Skip tag
+holder_addr = bytes(data[idx:idx+32]).hex()
+idx += 32
+print(f"Holder Address: account-hash-{holder_addr}")
+
+# Field 5: credential_hash
+hash_len = int.from_bytes(bytes(data[idx:idx+4]), "little")
+idx += 4
+cred_hash = decode_string(data[idx:idx+hash_len])
+idx += hash_len
+print(f"Credential Hash: {cred_hash}")
+
+# Field 6: issuer_signature
+sig_len = int.from_bytes(bytes(data[idx:idx+4]), "little")
+idx += 4
+signature = decode_string(data[idx:idx+sig_len])
+idx += sig_len
+print(f"Signature: {signature[:32]}...")
+
+# Field 7: issued_at (u64)
+issued_at = int.from_bytes(bytes(data[idx:idx+8]), "little")
+idx += 8
+print(f"Issued At: {issued_at}")
+
+# Field 8: expires_at (u64)
+expires_at = int.from_bytes(bytes(data[idx:idx+8]), "little")
+idx += 8
+print(f"Expires At: {expires_at}")
+
+# Field 9: ai_confidence (u8)
+ai_confidence = data[idx]
+idx += 1
+print(f"AI Confidence: {ai_confidence}%")
+
+# Field 10: ipfs_hash
+ipfs_len = int.from_bytes(bytes(data[idx:idx+4]), "little")
+idx += 4
+ipfs_hash = decode_string(data[idx:idx+ipfs_len])
+idx += ipfs_len
+print(f"IPFS Hash: {ipfs_hash}")
+
+# Field 11: revoked (bool)
+revoked = data[idx]
+idx += 1
+revoked_status = "Yes" if revoked else "No"
+print(f"Revoked: {revoked_status}")
+
+print("=" * 60)
+
+# Check status
+import time
+now = int(time.time() * 1000)
+
+if revoked:
+    print("❌ STATUS: REVOKED")
+elif now >= expires_at:
+    print("⏰ STATUS: EXPIRED")
+else:
+    print("✅ STATUS: VALID")
+print("=" * 60)
+'
