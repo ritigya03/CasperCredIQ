@@ -83,7 +83,7 @@ app.use(cors({
     'http://localhost:3001',
     'http://localhost:3002',
     'https://caspercrediq-6.onrender.com',
-    /\.vercel\.app$/ // Allow all Vercel deployments
+    'https://casper-cred-iq.vercel.app'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
