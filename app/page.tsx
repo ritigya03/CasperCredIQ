@@ -36,6 +36,16 @@ import WalletConnect from "../components/WalletConnect"
 import { useRouter } from "next/navigation"
 
 // Custom Button Component
+interface ButtonProps {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: "default" | "secondary" | "outline" | "ghost" | "destructive";
+  size?: "default" | "sm" | "lg" | "xl";
+  className?: string;
+  disabled?: boolean;
+  type?: "button" | "submit" | "reset";
+}
+
 const Button = ({ 
   children, 
   onClick, 
@@ -44,7 +54,7 @@ const Button = ({
   className = "",
   disabled = false,
   type = "button"
-}) => {
+}: ButtonProps) => {
   const baseStyles = "font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2"
   
   const variants = {
@@ -64,6 +74,7 @@ const Button = ({
   
   return (
     <button
+      type={type}
       onClick={onClick}
       disabled={disabled}
       className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -73,16 +84,24 @@ const Button = ({
   )
 }
 
-// Custom Card Component
-const Card = ({ children, className = "" }) => {
+interface CardProps {
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+const Card = ({ children, className = "", style = {} }: CardProps) => {
   return (
-    <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${className}`}>
+    <div 
+      className={`bg-white rounded-xl border border-gray-200 shadow-sm ${className}`}
+      style={style}
+    >
       {children}
     </div>
   )
 }
 
-const CardContent = ({ children, className = "" }) => {
+const CardContent = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => {
   return (
     <div className={`p-6 ${className}`}>
       {children}
