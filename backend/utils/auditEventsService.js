@@ -16,9 +16,10 @@ import { decodeEvent, getAuditLogEvents, getEventsForCredential } from './eventD
 const NODE_URL = process.env.CASPER_NODE_URL || 'http://65.109.83.79:7777/rpc';
 const CONTRACT_HASH = '7375d3d1d28854233133b882cd2ea15596ab8ab6c15277fa569c3c245f30cdcd';
 
-// Events dictionary URef (from your contract)
-const EVENTS_UREF = 'uref-9a98a1bb70df1feeaac6afa21c034c1e84564c8bb3d3ad3f7b101a1165d98da3-007';
-const EVENTS_LENGTH_UREF = 'uref-56d90a5b12e6f90adc13e3efb54e77fb8b7b7a47314f7cfa989f2c6fd2f9ff5e-007';
+// Dynamic URef storage - Automatically fetched from contract
+let eventsURef = null;
+let eventsLengthURef = null;
+let lastUrefUpdate = 0;
 
 /**
  * Make an RPC call to the Casper node
@@ -47,12 +48,62 @@ export async function getStateRootHash() {
 }
 
 /**
+ * Ensure we have the latest URefs from the contract
+ * This makes the system robust against redeployments
+ */
+async function ensureURefs(stateRootHash) {
+    // Refresh URefs if they are missing or if it's been more than 5 minutes
+    if (eventsURef && eventsLengthURef && (Date.now() - lastUrefUpdate < 300000)) {
+        return;
+    }
+
+    try {
+        console.log(`🔄 Fetching latest URefs for contract: hash-${CONTRACT_HASH}...`);
+
+        const result = await rpcCall('state_get_item', {
+            state_root_hash: stateRootHash,
+            key: `hash-${CONTRACT_HASH}`,
+            path: []
+        });
+
+        if (!result.stored_value || !result.stored_value.Contract) {
+            throw new Error('Contract not found or invalid response structure');
+        }
+
+        const namedKeys = result.stored_value.Contract.named_keys;
+
+        // Find the specific dictionary keys used by Odra
+        const eventsKey = namedKeys.find(k => k.name === '__events');
+        const lengthKey = namedKeys.find(k => k.name === '__events_length');
+
+        if (eventsKey && lengthKey) {
+            eventsURef = eventsKey.key;
+            eventsLengthURef = lengthKey.key;
+            lastUrefUpdate = Date.now();
+            console.log(`✅ URefs found and updated:`);
+            console.log(`   Events Dict: ${eventsURef}`);
+            console.log(`   Length Ptr:  ${eventsLengthURef}`);
+        } else {
+            console.warn('⚠️ Could not find __events or __events_length keys in contract');
+        }
+
+    } catch (error) {
+        console.error(`❌ Failed to fetch contract URefs: ${error.message}`);
+        // Don't throw here, let the subsequent calls fail naturally if URefs are missing
+    }
+}
+
+/**
  * Get the total number of events
  */
 export async function getEventsCount(stateRootHash) {
+    if (!eventsLengthURef) {
+        throw new Error('Events Length URef not initialized - Contract may be invalid');
+    }
+
     const result = await rpcCall('state_get_item', {
         state_root_hash: stateRootHash,
-        key: EVENTS_LENGTH_UREF,
+        key: eventsLengthURef,
         path: []
     });
 
@@ -63,11 +114,15 @@ export async function getEventsCount(stateRootHash) {
  * Fetch a single event by index from the dictionary
  */
 export async function fetchEventByIndex(stateRootHash, index) {
+    if (!eventsURef) {
+        throw new Error('Events Dictionary URef not initialized');
+    }
+
     const result = await rpcCall('state_get_dictionary_item', {
         state_root_hash: stateRootHash,
         dictionary_identifier: {
             URef: {
-                seed_uref: EVENTS_UREF,
+                seed_uref: eventsURef,
                 dictionary_item_key: String(index)
             }
         }
@@ -85,6 +140,14 @@ export async function fetchAllEvents() {
 
     const stateRootHash = await getStateRootHash();
     console.log(`   State root: ${stateRootHash.substring(0, 16)}...`);
+
+    // Ensure we have correct URefs before fetching
+    await ensureURefs(stateRootHash);
+
+    // If URefs are still missing after attempt, we can't proceed
+    if (!eventsURef || !eventsLengthURef) {
+        throw new Error('Cannot fetch events: Contract URefs could not be determined. Please check if CONTRACT_HASH is correct.');
+    }
 
     const eventsCount = await getEventsCount(stateRootHash);
     console.log(`   Total events: ${eventsCount}`);

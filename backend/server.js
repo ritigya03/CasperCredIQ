@@ -194,11 +194,13 @@ async function queryContractEntryPoint(entryPoint, args = []) {
     const clArgs = [];
 
     args.forEach(arg => {
+      console.log(`   - Arg: ${arg.name} = ${arg.value} (${typeof arg.value})`);
       if (arg.name === 'credential_id' && typeof arg.value === 'string') {
         clArgs.push(CLValueBuilder.string(arg.value));
       } else if (arg.name === 'address' && typeof arg.value === 'string') {
         // Check if it's a Key (hex) or public key string
         if (arg.value.startsWith('01') || arg.value.startsWith('02')) {
+          console.log(`     (Address is Public Key, converting to Account Hash)`);
           clArgs.push(CLValueBuilder.byteArray(CLPublicKey.fromHex(arg.value).toAccountHash()));
         } else {
           clArgs.push(CLValueBuilder.key(arg.value));
@@ -575,14 +577,18 @@ app.get('/api/verify/:credentialId', async (req, res) => {
       let aiVerification = null;
 
       if (credentialData.ipfsHash?.parsed) {
+        console.log(`   📦 Fetching IPFS data from: ${credentialData.ipfsHash.parsed}`);
         const ipfsResult = await fetchFromIPFS(credentialData.ipfsHash.parsed);
         if (ipfsResult.success) {
           ipfsData = ipfsResult.data;
+          console.log(`   🤖 AI Data found in IPFS for ${credentialId}: ${ipfsData.aiRecommendation ? '✅ RECOMMENDED' : '❌ NOT RECOMMENDED'} (Score: ${ipfsData.aiConfidence || ipfsData.confidenceScore || 0})`);
           aiVerification = {
             aiVerified: ipfsData.aiRecommendation || false,
-            aiConfidence: ipfsData.aiConfidence || 0,
+            aiConfidence: ipfsData.aiConfidence || ipfsData.confidenceScore || 0,
             aiJustification: ipfsData.aiJustification || 'No AI justification'
           };
+        } else {
+          console.log(`   ⚠️ IPFS data fetch failed: ${ipfsResult.error}`);
         }
       }
 
@@ -951,13 +957,17 @@ app.post('/api/verify/deploy', async (req, res) => {
         });
       }
 
-      // Find dictionary writes (these contain credential data)
+      // Find dictionary writes (these contain credential data in Odra/Casper)
       const dictionaryWrites = effects.filter(effect =>
         effect.key && effect.key.startsWith('dictionary-') &&
         effect.kind && effect.kind.Write
       );
 
-      console.log(`Found ${dictionaryWrites.length} dictionary writes`);
+      console.log(`📊 Found ${dictionaryWrites.length} dictionary writes in deploy execution.`);
+      dictionaryWrites.forEach((dw, idx) => {
+        const size = dw.kind.Write.CLValue?.bytes?.length || 0;
+        console.log(`   [${idx}] Key: ${dw.key.substring(0, 30)}... | Size: ${size} bytes`);
+      });
 
       // Find the largest dictionary write (credential data)
       let largestWrite = null;
@@ -995,9 +1005,9 @@ app.post('/api/verify/deploy', async (req, res) => {
       // NOW query the CURRENT state of this dictionary key to check for revocation
       let currentRevoked = decodedCredential.revoked;
       try {
-        console.log(`Querying current state of dictionary: ${largestWrite.key}`);
+        console.log(`\n📖 DICTIONARY VERIFICATION: Querying global state for ${largestWrite.key}`);
         const stateRootHash = await rpcClient.getStateRootHash();
-        console.log(`State root hash: ${stateRootHash}`);
+        console.log(`   State Root Hash: ${stateRootHash}`);
 
         // Query the dictionary key directly from global state
         const currentState = await rpcClient.queryGlobalState(
@@ -1009,22 +1019,20 @@ app.post('/api/verify/deploy', async (req, res) => {
         console.log('Current state response type:', typeof currentState);
         console.log('Current state keys:', currentState ? Object.keys(currentState) : 'null');
 
-        if (currentState && currentState.CLValue && currentState.CLValue.bytes) {
-          console.log('Got current state from blockchain (CLValue format), decoding...');
-          const currentCredential = decodeCredentialBytes(currentState.CLValue.bytes);
+        if (currentState && (currentState.CLValue || (currentState.stored_value && currentState.stored_value.CLValue))) {
+          const clValue = currentState.CLValue || currentState.stored_value.CLValue;
+          console.log(`   ✅ Successfully fetched current state from blockchain.`);
+          console.log(`   🔄 Decoding current state to check for updates (like revocation)...`);
+          
+          const currentCredential = decodeCredentialBytes(clValue.bytes);
           currentRevoked = currentCredential.revoked;
-          console.log(`Current revocation status from blockchain: ${currentRevoked}`);
-        } else if (currentState && currentState.stored_value && currentState.stored_value.CLValue) {
-          console.log('Got current state from blockchain (stored_value format), decoding...');
-          const currentCredential = decodeCredentialBytes(currentState.stored_value.CLValue.bytes);
-          currentRevoked = currentCredential.revoked;
-          console.log(`Current revocation status from blockchain: ${currentRevoked}`);
+          console.log(`   🔑 Current revocation status on-chain: ${currentRevoked ? '❌ REVOKED' : '✅ ACTIVE'}`);
         } else {
-          console.log('Current state query returned unexpected format');
+          console.log('   ⚠️ Current state query returned empty or unexpected format. Defaulting to deploy data.');
         }
       } catch (stateError) {
-        console.log('Could not query current state, using deploy data:', stateError.message);
-        // Fall back to deploy data
+        console.log(`   ❌ Could not query current state: ${stateError.message}`);
+        console.log(`   ⚠️ Falling back to data from the original deploy.`);
       }
 
       // Check status using CURRENT revocation status
@@ -1159,16 +1167,24 @@ function decodeCredentialBytes(hexBytes) {
     console.log(`Total length prefix: ${totalLength}`);
 
     const issuer_did = readString();
+    console.log(`   ↳ Issuer DID: ${issuer_did}`);
     const issuer_address = readKey();
+    console.log(`   ↳ Issuer Addr: ${issuer_address}`);
     const holder_did = readString();
+    console.log(`   ↳ Holder DID: ${holder_did}`);
     const holder_address = readKey();
+    console.log(`   ↳ Holder Addr: ${holder_address}`);
     const credential_hash = readString();
-    const issuer_signature = readString();
+    const issuer_signature = readString().substring(0, 20) + "...";
     const issued_at = readU64();
     const expires_at = readU64();
     const ai_confidence = readU8();
     const ipfs_hash = readString();
     const revoked = readBool();
+
+    console.log(`   ↳ AI Confidence: ${ai_confidence}%`);
+    console.log(`   ↳ IPFS Hash: ${ipfs_hash}`);
+    console.log(`   ↳ Revoked: ${revoked ? '❌ YES' : '✅ NO'}`);
 
     console.log(`Decoded successfully, final position: ${pos}/${bytes.length}`);
 
@@ -1592,13 +1608,15 @@ app.post('/api/deploy/submit', async (req, res) => {
       });
     }
 
-    console.log('✅ Deploy validated successfully');
-    console.log('🚀 Submitting deploy to blockchain...');
-
     // Submit to Casper network
     const deployHash = await casperClient.putDeploy(deployObject);
 
-    console.log(`✅ Deploy submitted! Hash: ${deployHash}`);
+    console.log('\n' + '-'.repeat(40));
+    console.log(`✅ DEPLOY SUBMITTED SUCCESSFULLY`);
+    console.log(`🔗 Hash: ${deployHash}`);
+    console.log(`👤 Account: ${deployObject.header.account.toHex()}`);
+    console.log(`⏱️ Timestamp: ${deployObject.header.timestamp}`);
+    console.log('-'.repeat(40) + '\n');
 
     res.json({
       success: true,
@@ -1874,7 +1892,9 @@ app.post('/api/verify-credential', async (req, res) => {
       });
     }
 
-    console.log(`🔍 Verifying credential with AI check: ${credentialId}`);
+    console.log('\n' + '══════════════════════════════════════════════════');
+    console.log(`🔍 AI-POWERED VERIFICATION START: ${credentialId}`);
+    console.log('══════════════════════════════════════════════════');
 
     // First, try to get from blockchain
     if (rpcClient) {
@@ -2250,6 +2270,10 @@ app.get('/api/blockchain/credential/:credentialId', async (req, res) => {
       };
 
       console.log(`✅ Blockchain query completed for: ${credentialId}`);
+      console.log(`   - Status: ${isValid ? 'VALID' : 'INVALID'}`);
+      console.log(`   - Holder: ${holder?.parsed || 'N/A'}`);
+      console.log(`   - AI Verified: ${aiVerification ? 'YES' : 'NO'}`);
+      console.log('══════════════════════════════════════════════════\n');
 
       res.json({
         success: true,
@@ -2489,7 +2513,8 @@ app.get('/api/verify/complete/:credentialId', async (req, res) => {
   try {
     const { credentialId } = req.params;
 
-    console.log(`🔍 Complete verification with AI for: ${credentialId}`);
+    console.log(`\n🕵️  FULL SYSTEM AUDIT for: ${credentialId}`);
+    console.log(`   (Checking Blockchain + IPFS + AI Status)`);
 
     const result = {
       credentialId: credentialId,
@@ -2661,11 +2686,16 @@ Provide your response in the following JSON format:
 Be thorough but fair. Consider that legitimate requests may have minor gaps.`;
 
       // Call Gemini API
+      console.log(`   📡 Sending payload to Gemini...`);
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
 
-      console.log('🤖 Gemini raw response:', text);
+      console.log('\n' + ' '.repeat(4) + '🤖 GEMINI ANALYSIS RESPONSE:');
+      console.log(' '.repeat(4) + '-'.repeat(30));
+      // Log the text with indentation for readability
+      text.split('\n').forEach(line => console.log(' '.repeat(6) + line));
+      console.log(' '.repeat(4) + '-'.repeat(30) + '\n');
 
       // Parse the JSON response from Gemini
       let aiAnalysis;
