@@ -25,6 +25,11 @@ import {
   FileText,
   Copy,
   Check,
+  Fingerprint,
+  Activity,
+  AlertTriangle,
+  UserX,
+  Edit,
 } from "lucide-react"
 import Link from "next/link"
 import WalletConnect from "../components/WalletConnect"
@@ -229,20 +234,20 @@ export default function LandingPage() {
             <div className="text-center max-w-4xl mx-auto">
               <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-blue-700 mb-6">
                 <Shield className="h-3 w-3 mr-2" />
-                Enterprise-Grade On-Chain Access Control
+                Cybersecurity-First Credential Infrastructure
               </div>
               
               <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-6 text-gray-900">
-                Beyond Static Credentials:
+                Security by Design:
                 <span className="block mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                  Active Permissions on Chain
+                  STRIDE-Hardened Credentials
                 </span>
               </h1>
               
               <p className="text-lg md:text-xl text-gray-600 mb-8 leading-relaxed max-w-3xl mx-auto">
-                CasperCredIQ transforms credentials from static documents into dynamic, enforceable permissions using 
-                Role-Based Access Control (RBAC) on the Casper blockchain. Each credential represents a real-time 
-                authorization decision — time-bound, auditable, and instantly revocable.
+  Built on W3C standards, Zero Trust principles, and STRIDE threat modeling. CasperCredIQ implements 
+                cryptographic verification, role-based access control, and complete audit trails to create 
+                tamper-proof, instantly revocable credentials on the Casper blockchain.
               </p>
               
               <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
@@ -283,147 +288,93 @@ export default function LandingPage() {
   <div className="container mx-auto px-4 md:px-6">
  <ContractHashDisplay />
   </div>
-           
-            
-        {/* The Problem Section */}
-        <section className="py-16 md:py-24 bg-white border-y border-gray-200">
-          <div className="container mx-auto px-4 md:px-6">
-            <div className="max-w-3xl mx-auto text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900">
-                Solving Real Security Problems
-              </h2>
-              <p className="text-lg text-gray-600">
-                Traditional credential systems fail where it matters most: dynamic access control and instant revocation
-              </p>
-            </div>
-            
-            <div className="grid md:grid-cols-2 gap-20 ml-[8rem]">
-              <div className="space-y-6">
-                <h3 className="text-xl  font-bold text-gray-900 flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
-                    <Key className="h-5 w-5 text-red-600" />
-                  </div>
-                  The Static Credential Problem
-                </h3>
-                <ul className="space-y-4">
-                  <li className="flex items-start gap-3">
-                    <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
-                    <span>ID Proofs, PDFs or certificates cannot be revoked in real-time</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
-                    <span>Centralized databases create single points of failure</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
-                    <span>No built-in governance or audit trails</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
-                    <span>Manual processes for employee onboarding/offboarding</span>
-                  </li>
-                </ul>
-              </div>
-              
-              <div className="space-y-6">
-                <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-                    <ShieldCheck className="h-5 w-5 text-green-600" />
-                  </div>
-                  The CasperCredIQ Solution
-                </h3>
-                <ul className="space-y-4">
-                  <li className="flex items-start gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span>Active permissions enforced on-chain via RBAC</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span>Instant global revocation without delays</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span>AI-assisted justification engine for safe issuance</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span>Complete audit trail with time-bound permissions</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Core Technology */}
-        <section id="technology" className="py-16 md:py-24 bg-gradient-to-b from-blue-50 to-white">
+           {/* Security Foundations */}
+        <section id="security" className="py-16 md:py-24 bg-gradient-to-b from-white to-blue-50">
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900">
-                Enterprise-Grade Technology Stack
+                Built on Proven Cybersecurity Foundations
               </h2>
               <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-                Combining AI decision support with decentralized, tamper-proof enforcement on Casper blockchain
+                Every design decision backed by industry-standard security frameworks
               </p>
             </div>
             
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
               {[
                 {
-                  title: "Role-Based Access Control (RBAC)",
-                  icon: Users,
+                  title: "W3C Verifiable Credentials",
+                  icon: Fingerprint,
                   color: "from-blue-500 to-blue-600",
-                  desc: "Foundational security concept implemented natively on-chain. Define roles like student, developer, moderator, or administrator with precise permissions.",
-                  features: ["Granular permissions", "Least-privilege principle", "Role hierarchy"]
+                  standard: "W3C VC Standard",
+                  desc: "Implements issuer DIDs, holder DIDs, credential hashes, and digital signatures following W3C specifications.",
+                  security: "Digital signatures ensure authentication and non-repudiation. Even if IPFS storage is compromised, credentials cannot be forged because signatures won't verify against the on-chain issuer DID.",
+                  features: ["Cryptographic authentication", "Non-repudiation guarantee", "Tamper-evident design"]
                 },
                 {
-                  title: "AI Credential Justification",
-                  icon: Cpu,
+                  title: "Zero Trust Architecture",
+                  icon: Lock,
                   color: "from-purple-500 to-purple-600",
-                  desc: "Evaluates user request context, justification, and risk before recommending approval. Maintains human oversight with issuer retaining final authority.",
-                  features: ["Risk assessment", "Context evaluation", "Decision transparency"]
+                  standard: "Zero Trust Security",
+                  desc: "Never trust, always verify. Four-tier access control: No Access → Viewer → Issuer → Auditor → Owner.",
+                  security: "Least-privilege principle enforced on-chain. Every action requires explicit authorization checks. No implicit trust relationships.",
+                  features: ["Explicit verification", "Least privilege", "Assume breach mindset"]
                 },
                 {
-                  title: "Smart Contract Enforcement",
-                  icon: FileText,
+                  title: "AI Explainable Decisions",
+                  icon: Cpu,
                   color: "from-green-500 to-green-600",
-                  desc: "All authorization logic is executed through upgradeable smart contracts on Casper Network, ensuring tamper-proof enforcement.",
-                  features: ["Upgradeable contracts", "Gas-efficient", "Transparent logic"]
+                  standard: "XAI Framework",
+                  desc: "AI evaluates credential requests and provides confidence scores (0-100%) with transparent justifications.",
+                  security: "Human-in-the-loop oversight prevents automated abuse. Issuer retains final authority over all credential issuance decisions.",
+                  features: ["Transparency", "Human oversight", "Audit trail of AI decisions"]
                 },
                 {
-                  title: "Time-Bound Credentials",
-                  icon: Clock,
+                  title: "Complete Audit Logs",
+                  icon: History,
                   color: "from-orange-500 to-orange-600",
-                  desc: "Set expiration dates and validity periods for all credentials. Automatic expiration without manual intervention.",
-                  features: ["Automatic expiry", "Renewable permissions", "Temporal control"]
+                  standard: "NIST 800-53",
+                  desc: "Immutable on-chain audit trail for every credential action: issued, verified, revoked.",
+                  security: "Forensic-grade logging enables incident investigation and compliance demonstration. Timestamped and cryptographically linked to actors.",
+                  features: ["Immutable records", "Forensic analysis", "Compliance reporting"]
                 },
                 {
-                  title: "Instant Revocation",
-                  icon: RefreshCw,
+                  title: "Rate Limiting & Abuse Prevention",
+                  icon: Activity,
                   color: "from-red-500 to-red-600",
-                  desc: "Global revocation capabilities that take effect immediately across all systems. Perfect for emergency offboarding scenarios.",
-                  features: ["Immediate effect", "Global scope", "Audit trail"]
+                  standard: "DoS Mitigation",
+                  desc: "Smart contract enforces 25 credentials/hour issuance limit and 50 verifications/hour per address.",
+                  security: "Prevents spam attacks and credential flooding. Suspicious activity triggers automatic blocking and event logging.",
+                  features: ["Spam prevention", "Auto-blocking", "Behavioral analysis"]
                 },
                 {
-                  title: "Public Verification",
-                  icon: Globe,
+                  title: "Cryptographic Verification",
+                  icon: ShieldCheck,
                   color: "from-indigo-500 to-indigo-600",
-                  desc: "Anyone can verify credential authenticity without needing API access or special permissions. Full transparency with privacy controls.",
-                  features: ["Zero-knowledge proofs", "Public auditability", "Privacy-preserving"]
+                  standard: "PKI Principles",
+                  desc: "Hash-based integrity verification ensures credential data hasn't been altered since issuance.",
+                  security: "On-chain hash comparison prevents tampering. Any modification to credential data invalidates the hash, making forgery detectable.",
+                  features: ["Integrity protection", "Tamper detection", "Cryptographic proofs"]
                 }
-              ].map((tech, i) => (
-                <Card key={i} className="hover:shadow-xl transition-shadow duration-300">
+              ].map((item, i) => (
+                <Card key={i} className="hover:shadow-xl transition-shadow duration-300 border-t-4" style={{ borderTopColor: `rgb(${i * 30}, ${100 + i * 20}, ${200 - i * 10})` }}>
                   <CardContent className="h-full flex flex-col">
-                    <div className={`mb-4 h-12 w-12 rounded-xl bg-gradient-to-r ${tech.color} flex items-center justify-center`}>
-                      <tech.icon className="h-6 w-6 text-white" />
+                    <div className={`mb-4 h-12 w-12 rounded-xl bg-gradient-to-r ${item.color} flex items-center justify-center`}>
+                      <item.icon className="h-6 w-6 text-white" />
                     </div>
-                    <h3 className="text-xl font-bold mb-3 text-gray-900">{tech.title}</h3>
-                    <p className="text-gray-600 mb-4 flex-grow">{tech.desc}</p>
-                    <div className="space-y-2">
-                      {tech.features.map((feature, idx) => (
+                    <div className="mb-2">
+                      <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">{item.standard}</span>
+                    </div>
+                    <h3 className="text-xl font-bold mb-3 text-gray-900">{item.title}</h3>
+                    <p className="text-gray-600 mb-3 text-sm">{item.desc}</p>
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4">
+                      <p className="text-sm text-gray-700"><span className="font-semibold text-blue-900">Security: </span>{item.security}</p>
+                    </div>
+                    <div className="space-y-2 mt-auto">
+                      {item.features.map((feature, idx) => (
                         <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
-                          <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          {feature}
+                          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                          <span>{feature}</span>
                         </div>
                       ))}
                     </div>
@@ -433,6 +384,285 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
+
+            {/* STRIDE Threat Modeling */}
+        <section id="stride" className="py-16 md:py-24 bg-white">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="text-center mb-12">
+              <div className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-red-700 mb-4">
+                <AlertTriangle className="h-3 w-3 mr-2" />
+                STRIDE Threat Model
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900">
+                Security-First Design: STRIDE Analysis
+              </h2>
+              <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+                Every potential threat identified and mitigated through cryptographic and architectural controls
+              </p>
+            </div>
+
+            <div className="max-w-6xl mx-auto space-y-6">
+              {[
+                {
+                  letter: "S",
+                  threat: "Spoofing",
+                  scenario: "Fake Issuer Creates Fraudulent Credentials",
+                  icon: UserX,
+                  color: "bg-red-500",
+                  mitigation: "Digital Signature Verification",
+                  implementation: "Every credential includes an issuer_signature field verified against the issuer_did. Only the legitimate issuer's private key can create valid signatures. Forged credentials fail cryptographic verification.",
+                  code: "issuer_signature: String // Cryptographically verified",
+                  impact: "HIGH",
+                  status: "MITIGATED"
+                },
+                {
+                  letter: "T",
+                  threat: "Tampering",
+                  scenario: "Attacker Modifies IPFS Credential Data",
+                  icon: Edit,
+                  color: "bg-orange-500",
+                  mitigation: "Cryptographic Hash Verification",
+                  implementation: "credential_hash (SHA-256) stored on-chain. During verification, system recomputes hash of IPFS data and compares. Any tampering causes hash mismatch and verification failure.",
+                  code: "if credential_hash != provided_hash { FAIL }",
+                  impact: "HIGH",
+                  status: "MITIGATED"
+                },
+                {
+                  letter: "R",
+                  threat: "Repudiation",
+                  scenario: "Issuer Denies Having Issued Credential",
+                  icon: FileText,
+                  color: "bg-yellow-500",
+                  mitigation: "Immutable On-Chain Event Logs",
+                  implementation: "CredentialIssued events permanently recorded on blockchain with issuer address, timestamp, and credential details. Non-repudiable proof of issuance action.",
+                  code: "emit CredentialIssued { issuer, timestamp, ... }",
+                  impact: "MEDIUM",
+                  status: "MITIGATED"
+                },
+                {
+                  letter: "I",
+                  threat: "Information Disclosure",
+                  scenario: "Unauthorized Access to Credential Data",
+                  icon: Lock,
+                  color: "bg-green-500",
+                  mitigation: "Role-Based Access Control (RBAC)",
+                  implementation: "can_view_credential() checks: Only credential owner, issuer, or users with Auditor+ access level can view. Zero Trust: explicit authorization required for every read operation.",
+                  code: "if caller_level < 3 && caller != holder { DENY }",
+                  impact: "HIGH",
+                  status: "MITIGATED"
+                },
+                {
+                  letter: "D",
+                  threat: "Denial of Service",
+                  scenario: "Spam Credential Issuance Attack",
+                  icon: Activity,
+                  color: "bg-blue-500",
+                  mitigation: "Rate Limiting + Gas Costs",
+                  implementation: "Smart contract enforces 25 credentials/hour limit per address. Exceeding limit triggers RateLimitExceeded error and logs suspicious activity. Gas fees provide economic DoS protection.",
+                  code: "if issue_count >= 25 { revert(RateLimitExceeded) }",
+                  impact: "MEDIUM",
+                  status: "MITIGATED"
+                },
+                {
+                  letter: "E",
+                  threat: "Elevation of Privilege",
+                  scenario: "Regular User Becomes Issuer",
+                  icon: Key,
+                  color: "bg-purple-500",
+                  mitigation: "Access Level Controls + Owner Authority",
+                  implementation: "set_access_level() restricted to contract owner only. Credential issuance requires access_level >= 2. Unauthorized privilege escalation attempts logged as suspicious activity.",
+                  code: "if caller != owner { revert(NotOwner) }",
+                  impact: "CRITICAL",
+                  status: "MITIGATED"
+                }
+              ].map((threat, i) => (
+                <div key={i} className="group">
+                  <Card className="hover:shadow-xl transition-all duration-300 border-l-4" style={{ borderLeftColor: threat.color.replace('bg-', '#') }}>
+                    <CardContent className="p-6">
+                      <div className="flex items-start gap-6">
+                        {/* Letter Badge */}
+                        <div className={`shrink-0 h-16 w-16 ${threat.color} rounded-xl flex items-center justify-center text-white font-bold text-2xl shadow-lg`}>
+                          {threat.letter}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <div className="flex items-center gap-3 mb-1">
+                                <h3 className="text-xl font-bold text-gray-900">{threat.threat}</h3>
+                                <threat.icon className="h-5 w-5 text-gray-500" />
+                              </div>
+                              <p className="text-sm text-gray-600 italic">"{threat.scenario}"</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                threat.impact === 'CRITICAL' ? 'bg-red-100 text-red-800' :
+                                threat.impact === 'HIGH' ? 'bg-orange-100 text-orange-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {threat.impact}
+                              </span>
+                              <span className="px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-800">
+                                {threat.status}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="grid md:grid-cols-2 gap-4 mt-4">
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Shield className="h-4 w-4 text-blue-600" />
+                                <span className="font-semibold text-blue-900 text-sm">Mitigation Strategy</span>
+                              </div>
+                              <p className="text-sm text-gray-700 font-medium mb-2">{threat.mitigation}</p>
+                              <p className="text-xs text-gray-600">{threat.implementation}</p>
+                            </div>
+
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <FileText className="h-4 w-4 text-gray-600" />
+                                <span className="font-semibold text-gray-900 text-sm">Implementation</span>
+                              </div>
+                              <code className="block text-xs font-mono bg-gray-900 text-green-400 p-2 rounded">
+                                {threat.code}
+                              </code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+     {/* The Problem Section */}
+<section className="py-16 md:py-24 bg-white border-y border-gray-200">
+  <div className="container mx-auto px-4 md:px-6">
+    <div className="max-w-3xl mx-auto text-center mb-6">
+      <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900">
+        Critical Problems in Traditional Credential Systems
+      </h2>
+      <p className="text-lg text-gray-600">
+        Legacy approaches create serious security vulnerabilities and operational inefficiencies
+      </p>
+    </div>
+    
+    <div className="grid md:grid-cols-2 ml-[150px] gap-5">
+      <div className="space-y-6">
+        <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+            <Key className="h-5 w-5 text-red-600" />
+          </div>
+          Static Credential Problem
+        </h3>
+        <ul className="space-y-4">
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>ID Proofs, PDFs or certificates cannot be revoked in real-time</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>Centralized databases create single points of failure</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>No built-in governance or audit trails</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>Manual processes for employee onboarding/offboarding</span>
+          </li>
+        </ul>
+      </div>
+      
+      <div className="space-y-6">
+        <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+          </div>
+          Security & Compliance Gaps
+        </h3>
+        <ul className="space-y-4">
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>No cryptographic proof of credential authenticity</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>Credentials can be forged or tampered without detection</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>Incomplete audit trails fail compliance requirements</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>Delayed revocation creates security windows for abuse</span>
+          </li>
+        </ul>
+      </div>
+
+      <div className="space-y-6">
+        <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+            <Lock className="h-5 w-5 text-red-600" />
+          </div>
+          Access Control Weaknesses
+        </h3>
+        <ul className="space-y-4">
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>No granular role-based permission management</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>Impossible to enforce time-bound access automatically</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>Over-privileged accounts due to manual management</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>No real-time visibility into who has access to what</span>
+          </li>
+        </ul>
+      </div>
+
+      <div className="space-y-6">
+        <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+            <Database className="h-5 w-5 text-red-600" />
+          </div>
+          Operational Inefficiencies
+        </h3>
+        <ul className="space-y-4">
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>Hours or days to issue/revoke credentials manually</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>High administrative overhead for credential lifecycle</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>No automated verification for third parties</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <X className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <span>Vendor lock-in with proprietary credential formats</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
 
         {/* Solutions Section */}
         <section id="solutions" className="py-16 md:py-24 bg-white">
@@ -452,49 +682,49 @@ export default function LandingPage() {
                   title: "Privileged Access Management",
                   icon: Key,
                   color: "bg-blue-100 text-blue-700",
-                  desc: "Secure administrative access to critical systems with real-time revocation capabilities."
+                  desc: "Secure administrative access with real-time revocation capabilities."
                 },
                 {
                   title: "Employee Lifecycle",
                   icon: Users,
                   color: "bg-green-100 text-green-700",
-                  desc: "Automate onboarding and offboarding processes with instant permission updates."
+                  desc: "Automate onboarding/offboarding with instant permission updates."
                 },
                 {
                   title: "DAO Governance",
                   icon: Building,
                   color: "bg-purple-100 text-purple-700",
-                  desc: "Transparent voting rights and membership management for decentralized organizations."
+                  desc: "Transparent voting rights and membership management."
                 },
                 {
                   title: "Academic Credentials",
                   icon: FileText,
                   color: "bg-orange-100 text-orange-700",
-                  desc: "Issue verifiable diplomas and certifications with built-in expiration and renewal."
+                  desc: "Issue verifiable diplomas with built-in expiration."
                 },
                 {
                   title: "Platform Security",
                   icon: Shield,
                   color: "bg-red-100 text-red-700",
-                  desc: "Protect SaaS platforms with granular access controls and audit trails."
+                  desc: "Protect SaaS platforms with granular access controls."
                 },
                 {
                   title: "Supply Chain",
                   icon: Globe,
                   color: "bg-indigo-100 text-indigo-700",
-                  desc: "Verify partner credentials and certifications in complex supply networks."
+                  desc: "Verify partner credentials in complex supply networks."
                 },
                 {
                   title: "Healthcare Access",
                   icon: ShieldCheck,
                   color: "bg-teal-100 text-teal-700",
-                  desc: "Manage HIPAA-compliant access to sensitive patient data and systems."
+                  desc: "Manage HIPAA-compliant access to sensitive data."
                 },
                 {
                   title: "Financial Compliance",
                   icon: Lock,
                   color: "bg-amber-100 text-amber-700",
-                  desc: "Enforce SOX and other regulatory requirements with immutable audit trails."
+                  desc: "Enforce SOX requirements with immutable audit trails."
                 }
               ].map((solution, i) => (
                 <div key={i} className="group">
