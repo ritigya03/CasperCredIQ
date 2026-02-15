@@ -17,17 +17,6 @@ Built on the **Casper Blockchain**, the platform enables fraud-resistant credent
 
 ---
 
-## 🎯 Track
-
-**FinTech & Blockchain**
-
-CasperCredIQ addresses core financial and compliance challenges such as identity verification, credential fraud, access control, and auditability by combining AI-based decision-making with decentralized enforcement.
-
-> **Solo Project**  
-> This project was designed, developed, and deployed entirely by me as a solo developer during the Frostbyte Hackathon 2026.
-
----
-
 ## 🎥 Demo Video
 
 ▶️ **Project Walkthrough**  
