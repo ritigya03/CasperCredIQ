@@ -4,6 +4,19 @@
 > *Ensuring every credential is justified, verifiable, and instantly revocable.*
 
 ---
+## Executive Summary
+
+CasperCredIQ solves the vulnerability of credential forgery on the static blockchain repository through a new two-step trust flow, using AI verification and blockchain-enforced credentials. In non technical terms, a digital certificate unable to be tampered with once issued. This is achieved by ensuring any credential is uniquely and permanently timestamped onto the decentralized ledger. As well as this, the AI acts as an intelligent filter, evaluating legitimacy and risk of fraud by giving a score of 0-100 whilst providing reasoning. Any approved credentials are then minted to the Casper blockchain, with significantly greater certainty of truthfulness. Similarly, any expired or revoked credentials can be invalidated near instantly¹. Thus, CasperCredIQ eliminates concerns of obsolete data on the blockchain.
+
+### Glossary to the Executive Summary
+
+Credential - Any proof of identity or achievement
+
+Decentralized Ledger - The shared record log distributed across all blockchain nodes
+
+¹ Blockchain data cannot be altered, but status of the data can be updated
+
+---
 
 ## 🚀 Overview
 
